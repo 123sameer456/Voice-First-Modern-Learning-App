@@ -2,6 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import LearnerHome from './pages/LearnerHome'
+import LearnerLayout from './components/learner/LearnerLayout'
+import JourneyMap from './pages/learner/JourneyMap'
+import ActivityPlayer from './pages/learner/ActivityPlayer'
+import Profile from './pages/learner/Profile'
+import Nudges from './pages/learner/Nudges'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminDashboard from './pages/admin/AdminDashboard'
 
@@ -29,10 +34,16 @@ export default function App() {
             path="/app"
             element={
               <Protected>
-                <LearnerHome />
+                <LearnerLayout />
               </Protected>
             }
-          />
+          >
+            <Route index element={<LearnerHome />} />
+            <Route path="journeys/:id" element={<JourneyMap />} />
+            <Route path="activities/:activityId" element={<ActivityPlayer />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="nudges" element={<Nudges />} />
+          </Route>
           <Route
             path="/admin"
             element={
