@@ -16,12 +16,16 @@ async def lifespan(_: FastAPI):
     yield
 
 
+_is_prod = settings.ENVIRONMENT == "prod"
+
 app = FastAPI(
     title="AI Learning Experience Engine",
     version="0.1.0",
     lifespan=lifespan,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    # Keep interactive API docs out of production
+    docs_url=None if _is_prod else "/api/docs",
+    redoc_url=None if _is_prod else "/api/redoc",
+    openapi_url=None if _is_prod else "/api/openapi.json",
 )
 
 app.add_middleware(

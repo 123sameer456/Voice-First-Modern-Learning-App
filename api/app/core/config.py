@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # config.py is at api/app/core/config.py
@@ -19,8 +20,10 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "dev"
 
-    # Database (plain SQLite3 file for the demo; switch URL later if needed)
-    DATABASE_URL: str = f"sqlite:///{(API_DIR / 'app.db').as_posix()}"
+    # Database (plain SQLite3 file for the demo). On Vercel the repo filesystem
+    # is read-only, so in production the DB defaults to /tmp (resets on cold
+    # start; seed fixtures rebuild demo content automatically).
+    DATABASE_URL: str = ""
 
     # Auth / JWT
     JWT_SECRET: str = "dev-only-secret-change-me"
@@ -31,6 +34,25 @@ class Settings(BaseSettings):
     # Bootstrap admin (created on first run only)
     INITIAL_ADMIN_EMAIL: str = "admin@ubl-demo.com"
     INITIAL_ADMIN_PASSWORD: str = "ubl-demo-2026"
+    # Demo learner created alongside seed fixtures for the panel demo
+    DEMO_LEARNER_EMAIL: str = "learner@ubl-demo.com"
+    DEMO_LEARNER_PASSWORD: str = "learner-demo-2026"
+
+    @model_validator(mode="after")
+    def _finalize_and_guard(self):
+        # Resolve the DB URL only after env vars are loaded (class-body defaults
+        # cannot see the configured ENVIRONMENT).
+        if not self.DATABASE_URL:
+            if self.ENVIRONMENT == "prod":
+                self.DATABASE_URL = "sqlite:////tmp/app.db"
+            else:
+                self.DATABASE_URL = f"sqlite:///{(API_DIR / 'app.db').as_posix()}"
+        if self.ENVIRONMENT == "prod":
+            if self.JWT_SECRET == "dev-only-secret-change-me":
+                raise ValueError("JWT_SECRET must be set in production")
+            if self.JWT_ALG.lower() == "none":
+                raise ValueError("JWT_ALG=none is not allowed")
+        return self
 
     # CORS / uploads
     FRONTEND_ORIGIN: str = "http://localhost:5173"

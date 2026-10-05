@@ -1,0 +1,448 @@
+{
+  "source": {
+    "type": "topic",
+    "title": "Fire Safety (English demo)",
+    "raw_text": "Workplace Fire Safety Essentials. Fire safety in the office protects lives and property. Every employee should know the three elements a fire needs: heat, fuel and oxygen; removing any one of them extinguishes a fire. Office fires are commonly caused by overloaded power sockets, faulty electrical equipment, and unattended cooking in the kitchen. The PASS technique governs fire extinguisher use: Pull the pin, Aim at the base of the fire, Squeeze the handle, and Sweep side to side. Employees should learn the location of the nearest fire exits and assembly points. In an evacuation, do not use lifts; use stairs only. Fire wardens sweep their assigned zones and close doors behind them to slow fire spread. Employers must conduct fire drills at least twice a year and record the results. Reporting near-misses such as overheating equipment helps prevent future fires."
+  },
+  "journey": {
+    "title": "Workplace Fire Safety Essentials",
+    "description": "Welcome to your essential guide to fire safety in the office! This journey will teach you how to protect yourself and your colleagues, and what to do in case of a fire.",
+    "config_snapshot": {
+      "objectives": [
+        "Identify the three elements a fire needs to start.",
+        "Recognize common causes of office fires.",
+        "Learn the PASS technique for using a fire extinguisher.",
+        "Locate fire exits and assembly points in your workplace.",
+        "Understand your role during a fire evacuation."
+      ],
+      "glossary": [
+        {
+          "term": "Fire Triangle",
+          "definition": "The three elements a fire needs to ignite: heat, fuel, and oxygen."
+        },
+        {
+          "term": "PASS technique",
+          "definition": "An acronym for using a fire extinguisher: Pull, Aim, Squeeze, Sweep."
+        },
+        {
+          "term": "Assembly Point",
+          "definition": "A designated safe location outside a building where people gather during an evacuation."
+        },
+        {
+          "term": "Fire Warden",
+          "definition": "A trained employee responsible for assisting with evacuation and ensuring zones are clear."
+        },
+        {
+          "term": "Near-miss",
+          "definition": "An unplanned event that did not result in injury, illness, or damage – but had the potential to do so."
+        }
+      ],
+      "content_settings": {
+        "default_language": "en",
+        "audience_level": "beginner",
+        "tone": "friendly",
+        "difficulty_range": [
+          1,
+          3
+        ]
+      }
+    },
+    "published_at": "2026-10-05T18:27:38.869438+00:00"
+  },
+  "concepts": [
+    {
+      "title": "Understanding Fire Basics",
+      "description": "Fires need three things to start. Knowing these helps us understand how to prevent and extinguish them.",
+      "order": 0
+    },
+    {
+      "title": "Using a Fire Extinguisher",
+      "description": "In some situations, you might need to use a fire extinguisher. The PASS technique makes it easy to remember the steps.",
+      "order": 1
+    },
+    {
+      "title": "Evacuation Procedures",
+      "description": "Knowing what to do during an evacuation is crucial for everyone's safety. Always follow the established procedures.",
+      "order": 2
+    },
+    {
+      "title": "Preventing Fires and Reporting",
+      "description": "Prevention is key to fire safety. By being aware and reporting potential issues, you contribute to a safer workplace.",
+      "order": 3
+    }
+  ],
+  "activities": [
+    {
+      "concept_index": 0,
+      "type": "puzzle",
+      "difficulty": 1,
+      "payload": {
+        "data": {
+          "instruction": "Drag each item into the correct category: 'Elements a Fire Needs' or 'Not an Element a Fire Needs'.",
+          "mode": "match",
+          "buckets": [
+            "Elements a Fire Needs",
+            "Not an Element a Fire Needs"
+          ],
+          "items": [
+            {
+              "id": "i1",
+              "text": "Heat"
+            },
+            {
+              "id": "i2",
+              "text": "Water"
+            },
+            {
+              "id": "i3",
+              "text": "Fuel"
+            },
+            {
+              "id": "i4",
+              "text": "Oxygen"
+            },
+            {
+              "id": "i5",
+              "text": "Smoke Detector"
+            }
+          ]
+        },
+        "answer": {
+          "solutions": {
+            "i1": "Elements a Fire Needs",
+            "i2": "Not an Element a Fire Needs",
+            "i3": "Elements a Fire Needs",
+            "i4": "Elements a Fire Needs",
+            "i5": "Not an Element a Fire Needs"
+          }
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Every employee should know the three elements a fire needs: heat, fuel and oxygen; removing any one of them extinguishes a fire."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 0,
+      "xp": 10
+    },
+    {
+      "concept_index": 1,
+      "type": "scenario",
+      "difficulty": 2,
+      "payload": {
+        "data": {
+          "prompt": "You've decided to use a fire extinguisher on a small office fire. What is the correct first step according to the PASS technique?",
+          "options": [
+            {
+              "id": "a",
+              "text": "Aim at the base of the fire."
+            },
+            {
+              "id": "b",
+              "text": "Pull the pin."
+            },
+            {
+              "id": "c",
+              "text": "Squeeze the handle."
+            },
+            {
+              "id": "d",
+              "text": "Sweep side to side."
+            }
+          ]
+        },
+        "answer": {
+          "correct_option_id": "b",
+          "rationale": "The PASS technique starts with 'Pull the pin' as its first step."
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "The PASS technique governs fire extinguisher use: Pull the pin, Aim at the base of the fire, Squeeze the handle, and Sweep side to side."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 1,
+      "xp": 20
+    },
+    {
+      "concept_index": 2,
+      "type": "simulation",
+      "difficulty": 3,
+      "payload": {
+        "data": {
+          "scenario": "You are an employee in an office building when the fire alarm sounds. Smoke is visible down the hallway.",
+          "steps": [
+            {
+              "prompt": "What is your immediate priority?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "Grab your laptop and important documents."
+                },
+                {
+                  "id": "b",
+                  "text": "Locate the nearest fire exit."
+                },
+                {
+                  "id": "c",
+                  "text": "Call a colleague to confirm it's a real alarm."
+                }
+              ]
+            },
+            {
+              "prompt": "You are near the lift lobby and the stairs. Which should you use to evacuate?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "The lift, as it's faster."
+                },
+                {
+                  "id": "b",
+                  "text": "The stairs only."
+                },
+                {
+                  "id": "c",
+                  "text": "Wait for a fire warden to direct you."
+                }
+              ]
+            },
+            {
+              "prompt": "As you exit your floor via the fire exit, you notice the door is ajar. What should you do?",
+              "options": [
+                {
+                  "id": "a",
+                  "text": "Leave it open for others."
+                },
+                {
+                  "id": "b",
+                  "text": "Close the door behind you."
+                },
+                {
+                  "id": "c",
+                  "text": "Report it to the fire warden later."
+                }
+              ]
+            }
+          ]
+        },
+        "answer": {
+          "correct_option_ids": [
+            "b",
+            "b",
+            "b"
+          ]
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Employees should learn the location of the nearest fire exits and assembly points.",
+            "In an evacuation, do not use lifts; use stairs only.",
+            "Fire wardens sweep their assigned zones and close doors behind them to slow fire spread."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 2,
+      "xp": 30
+    },
+    {
+      "concept_index": 3,
+      "type": "mission",
+      "difficulty": 2,
+      "payload": {
+        "data": {
+          "briefing": "Your mission is to identify potential fire hazards in your immediate workspace or a common office area, and consider how to report them.",
+          "tasks": [
+            "Identify at least one overloaded power socket or faulty electrical equipment.",
+            "Check for any signs of unattended cooking or potential kitchen hazards if applicable.",
+            "Formulate a plan to report any identified near-misses or hazards to the appropriate person."
+          ],
+          "success_criteria": "The learner can accurately identify common fire hazards and articulates a clear reporting mechanism based on workplace safety protocols."
+        },
+        "answer": {
+          "min_tasks": 2
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Office fires are commonly caused by overloaded power sockets, faulty electrical equipment, and unattended cooking in the kitchen.",
+            "Reporting near-misses such as overheating equipment helps prevent future fires."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 3,
+      "xp": 20
+    },
+    {
+      "concept_index": 0,
+      "type": "scenario",
+      "difficulty": 1,
+      "payload": {
+        "data": {
+          "prompt": "A small fire has started in an office waste bin. You quickly cover it with a metal lid, cutting off the supply of air. Which element of the fire triangle are you removing to extinguish the fire?",
+          "options": [
+            {
+              "id": "a",
+              "text": "Heat"
+            },
+            {
+              "id": "b",
+              "text": "Fuel"
+            },
+            {
+              "id": "c",
+              "text": "Oxygen"
+            },
+            {
+              "id": "d",
+              "text": "Ignition"
+            }
+          ]
+        },
+        "answer": {
+          "correct_option_id": "c",
+          "rationale": "By covering the fire, you are removing oxygen, which is one of the three elements a fire needs. Removing any one of them extinguishes a fire."
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Every employee should know the three elements a fire needs: heat, fuel and oxygen; removing any one of them extinguishes a fire."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 4,
+      "xp": 10
+    },
+    {
+      "concept_index": 1,
+      "type": "puzzle",
+      "difficulty": 2,
+      "payload": {
+        "data": {
+          "instruction": "Order the steps of the PASS technique correctly.",
+          "mode": "order",
+          "items": [
+            {
+              "id": "i1",
+              "text": "Squeeze the handle"
+            },
+            {
+              "id": "i2",
+              "text": "Pull the pin"
+            },
+            {
+              "id": "i3",
+              "text": "Sweep side to side"
+            },
+            {
+              "id": "i4",
+              "text": "Aim at the base of the fire"
+            }
+          ]
+        },
+        "answer": {
+          "solutions": {
+            "i1": 3,
+            "i2": 1,
+            "i3": 4,
+            "i4": 2
+          }
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "The PASS technique governs fire extinguisher use: Pull the pin, Aim at the base of the fire, Squeeze the handle, and Sweep side to side."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 5,
+      "xp": 20
+    },
+    {
+      "concept_index": 2,
+      "type": "mission",
+      "difficulty": 1,
+      "payload": {
+        "data": {
+          "briefing": "Your mission is to familiarize yourself with the evacuation routes and procedures in your workplace.",
+          "tasks": [
+            "Locate the nearest primary fire exit from your workstation.",
+            "Identify the location of the nearest assembly point for your building.",
+            "Confirm that you know where the stairs are located and understand not to use lifts during an evacuation."
+          ],
+          "success_criteria": "The learner can confidently point out their nearest fire exit, assembly point, and confirm the correct evacuation method (stairs only)."
+        },
+        "answer": {
+          "min_tasks": 2
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Employees should learn the location of the nearest fire exits and assembly points.",
+            "In an evacuation, do not use lifts; use stairs only."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 6,
+      "xp": 10
+    },
+    {
+      "concept_index": 3,
+      "type": "scenario",
+      "difficulty": 2,
+      "payload": {
+        "data": {
+          "prompt": "You notice a power strip in a colleague's cubicle with multiple devices plugged into it, and the strip feels warm to the touch. What is the best action to take?",
+          "options": [
+            {
+              "id": "a",
+              "text": "Ignore it, it's not your responsibility."
+            },
+            {
+              "id": "b",
+              "text": "Unplug some devices yourself to reduce the load."
+            },
+            {
+              "id": "c",
+              "text": "Report the overloaded power socket and overheating equipment as a near-miss."
+            },
+            {
+              "id": "d",
+              "text": "Tell your colleague to be more careful."
+            }
+          ]
+        },
+        "answer": {
+          "correct_option_id": "c",
+          "rationale": "Overloaded power sockets are common causes of office fires, and reporting near-misses like overheating equipment helps prevent future fires. Reporting is the appropriate action."
+        },
+        "meta": {
+          "needs_review": false,
+          "issues": [],
+          "source_refs": [
+            "Office fires are commonly caused by overloaded power sockets, faulty electrical equipment, and unattended cooking in the kitchen.",
+            "Reporting near-misses such as overheating equipment helps prevent future fires."
+          ],
+          "model_confidence": 1.0
+        }
+      },
+      "order": 7,
+      "xp": 20
+    }
+  ]
+}
