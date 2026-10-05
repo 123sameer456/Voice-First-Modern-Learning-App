@@ -9,6 +9,9 @@ import Profile from './pages/learner/Profile'
 import Nudges from './pages/learner/Nudges'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminContentStudio from './pages/admin/AdminContentStudio'
+import AdminUsers from './pages/admin/AdminUsers'
+import AdminSettings from './pages/admin/AdminSettings'
 
 function Protected({ admin = false, children }) {
   const { user, loading } = useAuth()
@@ -53,6 +56,9 @@ export default function App() {
             }
           >
             <Route index element={<AdminDashboard />} />
+            <Route path="content" element={<AdminContentStudio />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="settings" element={<AdminSettings />} />
           </Route>
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

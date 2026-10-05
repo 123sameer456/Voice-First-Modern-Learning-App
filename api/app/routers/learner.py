@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_db
 from app.models import (
     Activity,
+    Badge,
     Concept,
     Interaction,
     Journey,
@@ -13,10 +14,12 @@ from app.models import (
     Mastery,
     Nudge,
     User,
+    UserBadge,
     utcnow,
 )
 from app.routers.admin_content import _journey_summary
 from app.schemas import (
+    BadgeProgressOut,
     ConceptOut,
     DueReinforcementOut,
     JourneyLearnerOut,
@@ -328,15 +331,6 @@ def _next_best_activity(db: Session, user_id: int, max_difficulty: int) -> NextA
                 order=pick.order,
             )
     return None
-    return NextActivityOut(
-        id=pick.id,
-        journey_id=pick.journey_id,
-        concept_id=pick.concept_id,
-        type=pick.type,
-        difficulty=pick.difficulty,
-        xp=pick.xp,
-        order=pick.order,
-    )
 
 
 def _last_practiced_at(db: Session, user_id: int, concept: Concept) -> datetime | None:
@@ -443,6 +437,31 @@ def get_progress(
     _maybe_generate_nudges(db, user, adaptive_settings, gam_settings)
     db.commit()
 
+    # Server-side completion state: any interaction graded as passed.
+    passed_ids: set[int] = set()
+    for activity_id, interaction_signals in (
+        db.query(Interaction.activity_id, Interaction.signals)
+        .filter(Interaction.user_id == user.id)
+        .all()
+    ):
+        if isinstance(interaction_signals, dict) and interaction_signals.get("passed"):
+            passed_ids.add(activity_id)
+
+    owned_badge_ids = {
+        ub.badge_id
+        for ub in db.query(UserBadge).filter(UserBadge.user_id == user.id).all()
+    }
+    badges_out = [
+        BadgeProgressOut(
+            code=badge.name,
+            title=badge.name,
+            icon=badge.icon,
+            description=badge.description,
+            earned=badge.id in owned_badge_ids,
+        )
+        for badge in db.query(Badge).order_by(Badge.id).all()
+    ]
+
     return ProgressOut(
         profile=ProfileStatsOut(
             xp=profile.xp,
@@ -454,6 +473,8 @@ def get_progress(
         mastery=sorted(mastery_rows, key=lambda m: (m.journey_id, m.concept_id)),
         next_best_activity=_next_best_activity(db, user.id, max_difficulty),
         due_reinforcement=_due_reinforcement(db, user.id, adaptive_settings),
+        badges=badges_out,
+        completed_activity_ids=sorted(passed_ids),
     )
 
 

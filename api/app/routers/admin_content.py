@@ -47,6 +47,7 @@ def _journey_counts(journey: Journey) -> dict:
 def _journey_summary(journey: Journey) -> JourneySummaryOut:
     return JourneySummaryOut(
         id=journey.id,
+        source_id=journey.content_source_id,
         title=journey.title,
         description=journey.description,
         status=journey.status,

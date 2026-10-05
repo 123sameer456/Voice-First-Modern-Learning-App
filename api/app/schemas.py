@@ -57,6 +57,7 @@ class ContentSourceOut(BaseModel):
 
 class JourneySummaryOut(BaseModel):
     id: int
+    source_id: int
     title: str
     description: str
     status: str
@@ -249,11 +250,21 @@ class DueReinforcementOut(BaseModel):
     recommended_activity: NextActivityOut | None = None
 
 
+class BadgeProgressOut(BaseModel):
+    code: str
+    title: str
+    icon: str = "award"
+    description: str = ""
+    earned: bool
+
+
 class ProgressOut(BaseModel):
     profile: ProfileStatsOut
     mastery: list[MasteryRowOut] = []
     next_best_activity: NextActivityOut | None = None
     due_reinforcement: list[DueReinforcementOut] = []
+    badges: list[BadgeProgressOut] = []
+    completed_activity_ids: list[int] = []
 
 
 class NudgeOut(BaseModel):

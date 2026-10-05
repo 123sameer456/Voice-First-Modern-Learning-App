@@ -70,7 +70,10 @@ export default function LearnerHome() {
   const profile = progress?.profile || user?.profile
   const firstName = (user?.email || '').split('@')[0]
   const nextBest = progress?.next_best_activity
-  const dueReinforcement = progress?.due_reinforcement
+  const dueList = Array.isArray(progress?.due_reinforcement)
+    ? progress.due_reinforcement
+    : []
+  const dueReinforcement = dueList[0]
 
   const stats = [
     { label: 'Level', value: profile?.level ?? 1 },
@@ -99,7 +102,11 @@ export default function LearnerHome() {
         <section className="grid gap-4 sm:grid-cols-2">
           {nextBest && (
             <button
-              onClick={() => navigate(`/app/activities/${nextBest.activity_id}?journey=${nextBest.journey_id ?? ''}`)}
+              onClick={() =>
+                navigate(
+                  `/app/activities/${nextBest.id}?journey=${nextBest.journey_id ?? ''}`,
+                )
+              }
               className="group rounded-2xl bg-sky-600 p-5 text-left text-white shadow-card transition hover:bg-sky-700"
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-sky-200">Resume</p>
@@ -121,9 +128,9 @@ export default function LearnerHome() {
               <p className="mt-1 text-sm text-amber-700">
                 Strengthen what you learned before it fades.
               </p>
-              {dueReinforcement.activity_id && (
+              {dueReinforcement.recommended_activity?.id && (
                 <Link
-                  to={`/app/activities/${dueReinforcement.activity_id}`}
+                  to={`/app/activities/${dueReinforcement.recommended_activity.id}`}
                   className="mt-3 inline-block text-sm font-medium text-amber-800 hover:underline"
                 >
                   Review now →

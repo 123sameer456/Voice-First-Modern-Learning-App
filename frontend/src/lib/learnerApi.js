@@ -22,16 +22,15 @@ export const getNudges = () => api('/learner/nudges')
 export const markNudgeRead = (nudgeId) =>
   api(`/learner/nudges/${nudgeId}/read`, { method: 'POST' })
 
-// --- Voice ---
-// { enabled, tts_model, voice_id, stability, similarity_boost, style, language,
-//   stt_provider, cache_tts }
-export const getVoiceConfig = () => api('/learner/voice-config')
+// --- Voice (server proxies ElevenLabs; browser STT stays client-side) ---
+// GET /voice/config -> { enabled, stt_provider, language }
+export const getVoiceConfig = () => api('/voice/config')
 
 // Returns the synthesized audio as a Blob (audio/mpeg) for playback via object URL.
 export async function tts(text, language) {
   const BASE = import.meta.env.VITE_API_BASE_URL || '/api'
   const token = localStorage.getItem('access_token')
-  const res = await fetch(`${BASE}/learner/tts`, {
+  const res = await fetch(`${BASE}/voice/tts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

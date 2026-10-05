@@ -377,7 +377,7 @@ export default function AdminContentStudio() {
 
   const journeysForSource = useMemo(() => {
     if (!reviewSource) return []
-    return journeys.filter((j) => j.source_title === reviewSource.title)
+    return journeys.filter((j) => j.source_id === reviewSource.id)
   }, [journeys, reviewSource])
 
   const resetCreateForm = () => {
