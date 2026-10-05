@@ -166,3 +166,107 @@ class StatsOut(BaseModel):
     journeys_draft: int
     interactions_total: int
     avg_mastery: float
+
+
+# --- Phase 3: adaptive engine / gamification ---
+
+class SubmitRequest(BaseModel):
+    """Learner submission for one activity.
+
+    `answers` shape depends on the activity type (see docs/activity-payloads.md):
+    - scenario: {"option_id": "b"} (a bare string option id is also accepted)
+    - puzzle:   {"solutions": {"i1": "Safe", "i2": 2}}  (bucket name or 1-based position)
+    - simulation: {"option_ids": ["a", "b"]} (a bare list is also accepted)
+    - mission:  {"tasks_completed": 2} (top-level `tasks_completed` also accepted)
+    """
+
+    answers: object = None
+    duration_s: float | None = None
+    hints_used: int = Field(default=0, ge=0)
+    self_corrections: int = Field(default=0, ge=0)
+    confidence: int = Field(default=3, ge=1, le=5)
+    tasks_completed: int | None = Field(default=None, ge=0)
+
+
+class BadgeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    icon: str
+    description: str
+
+
+class MasteryOut(BaseModel):
+    concept_id: int
+    score: float
+    confidence: float
+    explanation: list[str] = []
+
+
+class SubmitResponse(BaseModel):
+    passed: bool
+    xp_earned: int
+    new_badges: list[BadgeOut] = []
+    mastery: MasteryOut | None = None
+
+
+class ProfileStatsOut(BaseModel):
+    xp: int
+    level: int
+    streak_count: int
+    last_active_at: datetime | None = None
+    language_pref: str
+
+
+class MasteryRowOut(BaseModel):
+    concept_id: int
+    concept_title: str
+    journey_id: int
+    score: float  # retention-decayed
+    stored_score: float
+    confidence: float
+    last_activity_at: datetime | None = None
+    days_since_activity: float | None = None
+    signal_breakdown: dict = {}
+
+
+class NextActivityOut(BaseModel):
+    id: int
+    journey_id: int
+    concept_id: int | None = None
+    type: str
+    difficulty: int
+    xp: int
+    order: int
+
+
+class DueReinforcementOut(BaseModel):
+    concept_id: int
+    concept_title: str
+    mastery_score: float
+    last_practiced_at: datetime | None = None
+    recommended_activity: NextActivityOut | None = None
+
+
+class ProgressOut(BaseModel):
+    profile: ProfileStatsOut
+    mastery: list[MasteryRowOut] = []
+    next_best_activity: NextActivityOut | None = None
+    due_reinforcement: list[DueReinforcementOut] = []
+
+
+class NudgeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: str
+    message: str
+    scheduled_at: datetime
+    status: str
+
+
+class VoiceConfigOut(BaseModel):
+    enabled: bool
+    stt_provider: str
+    language: str

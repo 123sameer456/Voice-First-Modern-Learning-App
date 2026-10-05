@@ -6,7 +6,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
-from app.routers import admin_content, admin_system, auth, learner
+from app.routers import admin_content, admin_system, auth, learner, voice
 from app.seed import init_db
 
 
@@ -49,6 +49,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(admin_content.router, prefix="/api")
 app.include_router(admin_system.router, prefix="/api")
 app.include_router(learner.router, prefix="/api")
+app.include_router(voice.router, prefix="/api")
 
 
 @app.get("/api/health")
