@@ -60,7 +60,10 @@ class Settings(BaseSettings):
             if url.startswith("libsql://"):
                 url = "sqlite+libsql://" + url[len("libsql://") :]
             sep = "&" if "?" in url else "?"
-            self.DATABASE_URL = f"{url}{sep}authToken={self.TURSO_AUTH_TOKEN}&ssl=true"
+            # NOTE: the sqlalchemy-libsql dialect recognizes `secure` (not `ssl`) —
+            # without it the client connects over plaintext http/ws and Turso
+            # answers with a 308 redirect it cannot follow.
+            self.DATABASE_URL = f"{url}{sep}authToken={self.TURSO_AUTH_TOKEN}&secure=true"
         if self.ENVIRONMENT == "prod":
             if self.JWT_SECRET == "dev-only-secret-change-me":
                 raise ValueError("JWT_SECRET must be set in production")
