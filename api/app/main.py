@@ -61,6 +61,6 @@ def health():
     return {
         "status": "ok",
         "environment": settings.ENVIRONMENT,
-        # "turso" = persistent remote DB; "sqlite" = local/ephemeral file DB
-        "db": "turso" if settings.DATABASE_URL.startswith("sqlite+libsql") else "sqlite",
+        # "memory" = in-memory demo DB (resets on cold start, auto-seeded)
+        "db": "memory",
     }

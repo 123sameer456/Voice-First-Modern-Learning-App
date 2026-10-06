@@ -97,20 +97,19 @@ Walk through this checklist in order:
 
 Mic (voice input) notes: the browser's Web Speech API needs **Chrome or Edge** (it does not work in Firefox), and works on HTTPS — the `vercel.app` URL qualifies. Learners without mic support can always type.
 
-## Database persistence on Vercel (important)
+## Database on Vercel (important)
 
-The default setup uses `/tmp/app.db`, which is **ephemeral**:
+The demo runs on an **in-memory SQLite database** — zero external services, zero credentials, zero filesystem. On every cold start the app creates the schema and re-seeds the demo content (accounts, settings, badges, both demo journeys, sample nudges).
 
-- **Reads are stable**: demo journeys, settings, and accounts are rebuilt from committed fixtures + env vars on every cold start.
-- **Writes don't last**: learner activity, created users, and newly generated journeys disappear on the next cold start (new journeys survive only while that instance lives). For a demo/panel presentation this is usually fine — the seeded content is what you show.
+- **Reads are stable**: seeded content is always there.
+- **Writes live as long as the instance is warm**: learner activity, created users, and newly generated journeys survive between requests but disappear on cold restart/redeploy. With Fluid compute, instances stay warm a long time — in practice the demo holds up fine.
 
-If you need writes to stick, pick one:
+If you need writes to stick permanently, pick one:
 
 | Option | What it takes |
 | --- | --- |
 | **Render Starter + disk ($7/mo)** | The only way to keep SQLite truly persistent: deploy the backend as a Web Service, upgrade to the Starter plan, attach a persistent disk mounted at `/var/data`, and set `DATABASE_URL=sqlite:////var/data/app.db`. Point the frontend at it with `VITE_API_BASE_URL=https://<render-app>.onrender.com/api` and set `FRONTEND_ORIGIN` to the Vercel URL. (The Render **free** tier does *not* persist SQLite — its filesystem is ephemeral too and free services sleep after 15 min. See `render_deployment.md`.) |
-| **Turso ✅ (already wired)** | A dedicated Turso DB (`learning-engine`) was created in your org and the app is wired for it. On Vercel add three Production env vars — `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` (values in `turso-env.vercel.txt`) and `PYTHON_VERSION=3.12` (the libsql package needs the cp312 wheel) — then redeploy. In prod the app automatically connects over the libsql dialect; local dev keeps the file DB. |
-| **Keep Vercel as-is** | Zero work; demo data is self-healing. |
+| **Keep Vercel as-is (current)** | Zero work; demo data is self-healing. You can delete the `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, and `PYTHON_VERSION` env vars — they are no longer used. |
 
 For the challenge demo, the default is the recommended path — mention the persistence design in your presentation as a conscious trade-off.
 
