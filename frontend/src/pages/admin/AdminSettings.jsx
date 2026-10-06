@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getSettings, updateSetting } from '../../lib/adminApi'
+import InfoTip from '../../components/InfoTip'
+import {
+  getJourneySettings,
+  getSettings,
+  listJourneys,
+  updateJourneySetting,
+  updateSetting,
+} from '../../lib/adminApi'
 
 const GROUPS = ['content', 'gamification', 'adaptive', 'engagement', 'voice']
+// Groups consumed per-course at runtime (must match the backend).
+const PER_COURSE_GROUPS = ['gamification', 'adaptive']
 
 const DEFAULTS = {
   content: {
@@ -39,6 +48,74 @@ const DEFAULTS = {
   },
 }
 
+// Named ElevenLabs voices admins can pick directly.
+const VOICE_PRESETS = [
+  { name: 'Kai — Clean, Modern, Global', id: 'hfqsl1OMbiWsgPpht3el' },
+  { name: 'Alex — Business Book Narrator', id: '17bSMslPF4HPyQrGIXAG' },
+  { name: 'Lyan — Female, Casual & Friendly', id: 'PStJ2DzQnh8zxG5PDf1s' },
+  { name: 'Rober — Calm, Clear and Professional', id: 'BtWabtumIemAotTjP5sk' },
+]
+
+// Plain-language definition + example for every field on the page.
+const TIPS = {
+  content: {
+    default_language:
+      'The language the AI uses when generating NEW courses. Example: "ur" makes every generated activity, question and voice reply Urdu (Urdu script), keeping technical terms in English.',
+    audience_level:
+      'Who the content is written for — fed straight into the AI prompt. Example: "beginner" produces simpler sentences; "professional" assumes background knowledge.',
+    tone:
+      'The writing style of generated content. Example: "friendly" sounds like a helpful coach; "formal" sounds like a textbook.',
+    difficulty_range:
+      'The difficulty span (1 = very easy, 5 = hard) the AI may assign to activities. Example: 1–3 keeps everything gentle for new learners.',
+  },
+  gamification: {
+    xp_per_activity_base:
+      'Base XP before the difficulty multiplier. Example: base 10 → a difficulty-3 activity awards 30 XP on pass.',
+    level_curve:
+      'XP needed for each level-up. Example: 100 → 100 XP = level 2, 200 XP = level 3.',
+    hint_cost_xp:
+      'XP deducted every time a learner reveals a hint. Example: 2 → using 3 hints costs 6 XP in total.',
+    streaks_enabled:
+      'Tracks consecutive active days and shows the 🔥 streak counter. Example: a learner active Mon–Wed shows "3d".',
+  },
+  adaptive: {
+    mastery_pass_percent:
+      'The mastery % that counts as "passed" for a concept. Example: 70 → a learner needs ≥70% to clear the concept.',
+    hint_penalty:
+      'Fraction subtracted from mastery growth when hints were used. Example: 0.1 → using hints removes 10% of that attempt\'s mastery gain.',
+    reinforcement_interval_days:
+      'Days after mastering a concept before a review becomes due. Example: 3 → the review resurfaces on day 4.',
+  },
+  engagement: {
+    nudges_enabled:
+      'Master switch for the nudge system (the learner\'s Nudges inbox). Example: off hides all reminders immediately.',
+    nudge_frequency_days:
+      'Minimum days between re-engagement nudges per learner. Example: 7 → at most one "come back" nudge per week.',
+    quiet_hours:
+      'Window in which no nudges are sent (wraps midnight). Example: 22:00-07:00 → no nudges during the night.',
+  },
+  voice: {
+    enabled:
+      'Master switch for AI voice in the learner app. Example: off hides the Listen/speak controls and the tutor replies text-only.',
+    cache_tts:
+      'Reuses generated audio for identical text instead of calling ElevenLabs again. Example: replaying the same paragraph costs 0 extra credits after the first play.',
+    tts_model:
+      'ElevenLabs model id. Example: eleven_flash_v2_5 is the cheapest multilingual tier.',
+    voice_id:
+      'Which voice speaks. Pick a named preset from the list, or choose "Custom voice ID…" and paste any voice ID from your ElevenLabs dashboard.',
+    language:
+      'Voice + speech-recognition locale. Example: "ur" speaks Urdu and expects Urdu answers (English voice for "en").',
+    stt_provider:
+      'How spoken answers become text. browser_first = free browser mic (Chrome/Edge); elevenlabs = paid ElevenLabs Scribe, works in more browsers.',
+    stability:
+      '0–1: higher = steadier, flatter delivery; lower = more expressive variation. Example: 0.5 suits a friendly tutor.',
+    similarity_boost:
+      '0–1: how closely the voice sticks to the original speaker\'s timbre. Example: 0.75 keeps the preset voice recognisable.',
+    style:
+      '0–1: exaggerates expressiveness; higher costs more credits. Example: 0 for narration, 0.4 for an upbeat promo voice.',
+  },
+}
+
 const inputClass =
   'mt-1 w-full rounded-xl border border-sky-200 px-4 py-2.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200'
 
@@ -48,10 +125,32 @@ function normalizeRange(value) {
   return { min: 1, max: 5, asArray: true }
 }
 
-function Toggle({ label, checked, onChange, disabled }) {
+function FieldLabel({ text, tip }) {
+  return (
+    <label className="flex items-center text-xs font-medium text-slate-500">
+      {text}
+      <InfoTip tip={tip} />
+    </label>
+  )
+}
+
+function OverrideChip({ show }) {
+  if (!show) return null
+  return (
+    <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+      this course
+    </span>
+  )
+}
+
+function Toggle({ label, checked, onChange, disabled, tip, overridden }) {
   return (
     <label className="flex items-center justify-between gap-4 rounded-xl bg-sky-50/60 px-4 py-3">
-      <span className="text-sm text-slate-600">{label}</span>
+      <span className="flex items-center text-sm text-slate-600">
+        {label}
+        <OverrideChip show={overridden} />
+        <InfoTip tip={tip} />
+      </span>
       <button
         type="button"
         disabled={disabled}
@@ -70,11 +169,15 @@ function Toggle({ label, checked, onChange, disabled }) {
   )
 }
 
-function Slider({ label, value, onChange, disabled }) {
+function Slider({ label, value, onChange, disabled, tip, overridden }) {
   return (
     <div className="rounded-xl bg-sky-50/60 px-4 py-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-600">{label}</span>
+        <span className="flex items-center text-sm text-slate-600">
+          {label}
+          <OverrideChip show={overridden} />
+          <InfoTip tip={tip} />
+        </span>
         <span className="text-xs font-medium text-sky-700">{Number(value).toFixed(2)}</span>
       </div>
       <input
@@ -91,10 +194,11 @@ function Slider({ label, value, onChange, disabled }) {
   )
 }
 
-function NumberField({ label, value, onChange, step = '1', min, max, disabled }) {
+function NumberField({ label, tip, value, onChange, step = '1', min, max, disabled, overridden }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500">{label}</label>
+      <FieldLabel text={label} tip={tip} />
+      <OverrideChip show={overridden} />
       <input
         type="number"
         value={value ?? ''}
@@ -109,7 +213,7 @@ function NumberField({ label, value, onChange, step = '1', min, max, disabled })
   )
 }
 
-function ContentForm({ value, onChange, disabled }) {
+function ContentForm({ value, onChange, disabled, tips }) {
   const range = normalizeRange(value.difficulty_range)
   const setRange = (key, v) => {
     const next = { ...range, [key]: v === '' ? '' : Number(v) }
@@ -118,7 +222,7 @@ function ContentForm({ value, onChange, disabled }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div>
-        <label className="block text-xs font-medium text-slate-500">Default language</label>
+        <FieldLabel text="Default language" tip={tips.default_language} />
         <select
           value={value.default_language ?? 'en'}
           disabled={disabled}
@@ -130,7 +234,7 @@ function ContentForm({ value, onChange, disabled }) {
         </select>
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-500">Audience level</label>
+        <FieldLabel text="Audience level" tip={tips.audience_level} />
         <input
           type="text"
           value={value.audience_level ?? ''}
@@ -141,7 +245,7 @@ function ContentForm({ value, onChange, disabled }) {
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-500">Tone</label>
+        <FieldLabel text="Tone" tip={tips.tone} />
         <input
           type="text"
           value={value.tone ?? ''}
@@ -152,7 +256,7 @@ function ContentForm({ value, onChange, disabled }) {
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-500">Difficulty range</label>
+        <FieldLabel text="Difficulty range" tip={tips.difficulty_range} />
         <div className="mt-1 flex items-center gap-2">
           <input
             type="number"
@@ -197,11 +301,17 @@ export default function AdminSettings() {
   const [tabErrors, setTabErrors] = useState({})
   const savedTimer = useRef(null)
 
+  // Per-course settings
+  const [journeysList, setJourneysList] = useState([])
+  const [courseId, setCourseId] = useState('')
+  const [jOverrides, setJOverrides] = useState({})
+  const course = journeysList.find((j) => j.id === courseId) || null
+
   const loadSettings = useCallback(async () => {
     setLoading(true)
     setPageError('')
     try {
-      const rows = await getSettings()
+      const [rows, journeys] = await Promise.all([getSettings(), listJourneys()])
       const byKey = {}
       for (const row of rows) byKey[row.key] = row.value || {}
       const merged = {}
@@ -210,6 +320,7 @@ export default function AdminSettings() {
       }
       setOriginals(byKey)
       setForms(merged)
+      setJourneysList(journeys)
     } catch (e) {
       setPageError(e.message || 'Failed to load settings.')
     } finally {
@@ -224,8 +335,43 @@ export default function AdminSettings() {
     }
   }, [loadSettings])
 
-  const setFormValue = (group, next) => {
-    setForms((prev) => ({ ...prev, [group]: next }))
+  // Load the selected course's overrides whenever the course changes.
+  useEffect(() => {
+    if (!courseId) {
+      setJOverrides({})
+      return
+    }
+    let cancelled = false
+    getJourneySettings(courseId)
+      .then((data) => {
+        if (!cancelled) setJOverrides(data.overrides || {})
+      })
+      .catch(() => {
+        if (!cancelled) setJOverrides({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [courseId])
+
+  // Display value for a group: global merged with the course's overrides.
+  const valueFor = (group) => {
+    const base = forms[group] || {}
+    if (!course) return base
+    return { ...base, ...(jOverrides[group] || {}) }
+  }
+
+  const setValueFor = (group, next) => {
+    if (!course) {
+      setForms((prev) => ({ ...prev, [group]: next }))
+      return
+    }
+    const base = forms[group] || {}
+    const override = {}
+    for (const key of Object.keys(next)) {
+      if (JSON.stringify(next[key]) !== JSON.stringify(base[key])) override[key] = next[key]
+    }
+    setJOverrides((prev) => ({ ...prev, [group]: override }))
   }
 
   const diffForGroup = (group) => {
@@ -239,22 +385,40 @@ export default function AdminSettings() {
         if (before !== after) changes[key] = serializeRange(current[key])
         continue
       }
-      const before = original[key]
-      const after = current[key]
-      if (JSON.stringify(before) !== JSON.stringify(after)) {
-        changes[key] = after
+      if (JSON.stringify(original[key]) !== JSON.stringify(current[key])) {
+        changes[key] = current[key]
       }
     }
     return changes
   }
 
+  const flashSaved = (group) => {
+    setSavedTab(group)
+    if (savedTimer.current) clearTimeout(savedTimer.current)
+    savedTimer.current = setTimeout(() => setSavedTab(null), 3000)
+  }
+
   const handleSave = async (group) => {
     setTabErrors((prev) => ({ ...prev, [group]: '' }))
+
+    if (course && PER_COURSE_GROUPS.includes(group)) {
+      setSavingTab(group)
+      try {
+        const value = jOverrides[group] || {}
+        const updated = await updateJourneySetting(courseId, group, value)
+        setJOverrides(updated?.overrides || {})
+        flashSaved(group)
+      } catch (err) {
+        setTabErrors((prev) => ({ ...prev, [group]: err.message || 'Failed to save course settings.' }))
+      } finally {
+        setSavingTab(null)
+      }
+      return
+    }
+
     const changes = diffForGroup(group)
     if (Object.keys(changes).length === 0) {
-      setSavedTab(group)
-      if (savedTimer.current) clearTimeout(savedTimer.current)
-      savedTimer.current = setTimeout(() => setSavedTab(null), 3000)
+      flashSaved(group)
       return
     }
     setSavingTab(group)
@@ -267,9 +431,7 @@ export default function AdminSettings() {
           [group]: { ...prev[group], ...updated.value },
         }))
       }
-      setSavedTab(group)
-      if (savedTimer.current) clearTimeout(savedTimer.current)
-      savedTimer.current = setTimeout(() => setSavedTab(null), 3000)
+      flashSaved(group)
     } catch (err) {
       setTabErrors((prev) => ({ ...prev, [group]: err.message || 'Failed to save settings.' }))
     } finally {
@@ -277,17 +439,38 @@ export default function AdminSettings() {
     }
   }
 
-  const voice = forms.voice || {}
-  const adaptive = forms.adaptive || {}
-  const gamification = forms.gamification || {}
-  const engagement = forms.engagement || {}
-  const content = forms.content || {}
+  const handleResetCourseGroup = async (group) => {
+    if (!window.confirm(`Reset this group to the global settings for "${course.title}"?`)) return
+    setSavingTab(group)
+    try {
+      const updated = await updateJourneySetting(courseId, group, {})
+      setJOverrides(updated?.overrides || {})
+      flashSaved(group)
+    } catch (err) {
+      setTabErrors((prev) => ({ ...prev, [group]: err.message || 'Failed to reset course settings.' }))
+    } finally {
+      setSavingTab(null)
+    }
+  }
+
+  const isOverridden = (group, key) => Boolean(course && jOverrides[group]?.[key] !== undefined)
+  const groupHasOverrides = (group) =>
+    Boolean(course && Object.keys(jOverrides[group] || {}).length > 0)
+
+  const voice = valueFor('voice') || {}
+  const adaptive = valueFor('adaptive') || {}
+  const gamification = valueFor('gamification') || {}
+  const engagement = valueFor('engagement') || {}
+  const content = valueFor('content') || {}
+
+  const courseApplies = course && PER_COURSE_GROUPS.includes(activeTab)
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-slate-800">Settings</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Configure content defaults, gamification, adaptivity, engagement and voice.
+        Configure content defaults, gamification, adaptivity, engagement and voice — globally or per
+        course.
       </p>
 
       {pageError && <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{pageError}</p>}
@@ -300,7 +483,32 @@ export default function AdminSettings() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2">
+            {/* Course scope selector */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-sky-100 pb-4">
+              <label className="flex items-center gap-1 text-sm font-medium text-slate-600">
+                Course scope
+                <InfoTip tip="Pick a course to view and edit its own settings. Gamification and Adaptive can differ per course; the other groups are global in this version. Marked fields show a “this course” chip when the course overrides the global value." />
+              </label>
+              <select
+                value={courseId}
+                onChange={(e) => setCourseId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full max-w-sm rounded-xl border border-sky-200 px-4 py-2.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+              >
+                <option value="">🌐 Global (all courses)</option>
+                {journeysList.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title} {j.status === 'draft' ? '(draft)' : ''}
+                  </option>
+                ))}
+              </select>
+              {course && (
+                <span className="text-xs text-slate-400">
+                  Editing: <span className="font-medium text-slate-600">{course.title}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
               {GROUPS.map((group) => (
                 <button
                   key={group}
@@ -311,43 +519,66 @@ export default function AdminSettings() {
                   }`}
                 >
                   {group}
+                  {course && PER_COURSE_GROUPS.includes(group) && groupHasOverrides(group) && ' •'}
                 </button>
               ))}
             </div>
 
+            {course && !PER_COURSE_GROUPS.includes(activeTab) && (
+              <p className="mt-4 rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                In this version <span className="font-semibold capitalize">{activeTab}</span> settings
+                are global — they apply to every course. Per-course overrides apply to{' '}
+                <span className="font-semibold">gamification</span> and{' '}
+                <span className="font-semibold">adaptive</span>.
+              </p>
+            )}
+
             <div className="mt-6">
               {activeTab === 'content' && (
-                <ContentForm value={content} onChange={(v) => setFormValue('content', v)} disabled={savingTab === 'content'} />
+                <ContentForm
+                  value={content}
+                  onChange={(v) => setValueFor('content', v)}
+                  disabled={savingTab === 'content'}
+                  tips={TIPS.content}
+                />
               )}
 
               {activeTab === 'gamification' && (
                 <div className="grid gap-4 md:grid-cols-2">
                   <NumberField
                     label="XP per activity (base)"
+                    tip={TIPS.gamification.xp_per_activity_base}
                     value={gamification.xp_per_activity_base}
                     min="0"
                     disabled={savingTab === 'gamification'}
-                    onChange={(v) => setFormValue('gamification', { ...gamification, xp_per_activity_base: v })}
+                    overridden={isOverridden('gamification', 'xp_per_activity_base')}
+                    onChange={(v) => setValueFor('gamification', { ...gamification, xp_per_activity_base: v })}
                   />
                   <NumberField
                     label="Level curve (XP per level)"
+                    tip={TIPS.gamification.level_curve}
                     value={gamification.level_curve}
                     min="1"
                     disabled={savingTab === 'gamification'}
-                    onChange={(v) => setFormValue('gamification', { ...gamification, level_curve: v })}
+                    overridden={isOverridden('gamification', 'level_curve')}
+                    onChange={(v) => setValueFor('gamification', { ...gamification, level_curve: v })}
                   />
                   <NumberField
                     label="Hint cost (XP)"
+                    tip={TIPS.gamification.hint_cost_xp}
                     value={gamification.hint_cost_xp}
                     min="0"
                     disabled={savingTab === 'gamification'}
-                    onChange={(v) => setFormValue('gamification', { ...gamification, hint_cost_xp: v })}
+                    overridden={isOverridden('gamification', 'hint_cost_xp')}
+                    onChange={(v) => setValueFor('gamification', { ...gamification, hint_cost_xp: v })}
                   />
                   <Toggle
                     label="Streaks enabled"
+                    tip={TIPS.gamification.streaks_enabled}
                     checked={Boolean(gamification.streaks_enabled)}
                     disabled={savingTab === 'gamification'}
-                    onChange={(v) => setFormValue('gamification', { ...gamification, streaks_enabled: v })}
+                    overridden={isOverridden('gamification', 'streaks_enabled')}
+                    onChange={(v) => setValueFor('gamification', { ...gamification, streaks_enabled: v })}
                   />
                 </div>
               )}
@@ -356,8 +587,14 @@ export default function AdminSettings() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl bg-sky-50/60 px-4 py-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-600">Mastery pass percent</span>
-                      <span className="text-xs font-medium text-sky-700">{adaptive.mastery_pass_percent ?? 70}%</span>
+                      <span className="flex items-center text-sm text-slate-600">
+                        Mastery pass percent
+                        <OverrideChip show={isOverridden('adaptive', 'mastery_pass_percent')} />
+                        <InfoTip tip={TIPS.adaptive.mastery_pass_percent} />
+                      </span>
+                      <span className="text-xs font-medium text-sky-700">
+                        {adaptive.mastery_pass_percent ?? 70}%
+                      </span>
                     </div>
                     <input
                       type="range"
@@ -367,26 +604,35 @@ export default function AdminSettings() {
                       value={adaptive.mastery_pass_percent ?? 70}
                       disabled={savingTab === 'adaptive'}
                       onChange={(e) =>
-                        setFormValue('adaptive', { ...adaptive, mastery_pass_percent: Number(e.target.value) })
+                        setValueFor('adaptive', {
+                          ...adaptive,
+                          mastery_pass_percent: Number(e.target.value),
+                        })
                       }
                       className="mt-2 w-full accent-sky-600"
                     />
                   </div>
                   <NumberField
                     label="Hint penalty (mastery fraction, e.g. 0.1)"
+                    tip={TIPS.adaptive.hint_penalty}
                     step="0.05"
                     min="0"
                     max="1"
                     value={adaptive.hint_penalty}
                     disabled={savingTab === 'adaptive'}
-                    onChange={(v) => setFormValue('adaptive', { ...adaptive, hint_penalty: v })}
+                    overridden={isOverridden('adaptive', 'hint_penalty')}
+                    onChange={(v) => setValueFor('adaptive', { ...adaptive, hint_penalty: v })}
                   />
                   <NumberField
                     label="Reinforcement interval (days)"
+                    tip={TIPS.adaptive.reinforcement_interval_days}
                     value={adaptive.reinforcement_interval_days}
                     min="1"
                     disabled={savingTab === 'adaptive'}
-                    onChange={(v) => setFormValue('adaptive', { ...adaptive, reinforcement_interval_days: v })}
+                    overridden={isOverridden('adaptive', 'reinforcement_interval_days')}
+                    onChange={(v) =>
+                      setValueFor('adaptive', { ...adaptive, reinforcement_interval_days: v })
+                    }
                   />
                 </div>
               )}
@@ -395,27 +641,27 @@ export default function AdminSettings() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Toggle
                     label="Nudges enabled"
+                    tip={TIPS.engagement.nudges_enabled}
                     checked={Boolean(engagement.nudges_enabled)}
                     disabled={savingTab === 'engagement'}
-                    onChange={(v) => setFormValue('engagement', { ...engagement, nudges_enabled: v })}
+                    onChange={(v) => setValueFor('engagement', { ...engagement, nudges_enabled: v })}
                   />
                   <NumberField
                     label="Nudge frequency (days)"
+                    tip={TIPS.engagement.nudge_frequency_days}
                     value={engagement.nudge_frequency_days}
                     min="1"
                     disabled={savingTab === 'engagement'}
-                    onChange={(v) => setFormValue('engagement', { ...engagement, nudge_frequency_days: v })}
+                    onChange={(v) => setValueFor('engagement', { ...engagement, nudge_frequency_days: v })}
                   />
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-slate-500">
-                      Quiet hours (e.g. 22:00-07:00)
-                    </label>
+                    <FieldLabel text="Quiet hours (e.g. 22:00-07:00)" tip={TIPS.engagement.quiet_hours} />
                     <input
                       type="text"
                       value={engagement.quiet_hours ?? ''}
                       placeholder="22:00-07:00"
                       disabled={savingTab === 'engagement'}
-                      onChange={(e) => setFormValue('engagement', { ...engagement, quiet_hours: e.target.value })}
+                      onChange={(e) => setValueFor('engagement', { ...engagement, quiet_hours: e.target.value })}
                       className={inputClass}
                     />
                   </div>
@@ -426,44 +672,71 @@ export default function AdminSettings() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Toggle
                     label="Voice enabled"
+                    tip={TIPS.voice.enabled}
                     checked={Boolean(voice.enabled)}
                     disabled={savingTab === 'voice'}
-                    onChange={(v) => setFormValue('voice', { ...voice, enabled: v })}
+                    onChange={(v) => setValueFor('voice', { ...voice, enabled: v })}
                   />
                   <Toggle
                     label="Cache TTS audio"
+                    tip={TIPS.voice.cache_tts}
                     checked={Boolean(voice.cache_tts)}
                     disabled={savingTab === 'voice'}
-                    onChange={(v) => setFormValue('voice', { ...voice, cache_tts: v })}
+                    onChange={(v) => setValueFor('voice', { ...voice, cache_tts: v })}
                   />
                   <div>
-                    <label className="block text-xs font-medium text-slate-500">TTS model</label>
+                    <FieldLabel text="TTS model" tip={TIPS.voice.tts_model} />
                     <input
                       type="text"
                       value={voice.tts_model ?? ''}
                       placeholder="eleven_flash_v2_5"
                       disabled={savingTab === 'voice'}
-                      onChange={(e) => setFormValue('voice', { ...voice, tts_model: e.target.value })}
+                      onChange={(e) => setValueFor('voice', { ...voice, tts_model: e.target.value })}
                       className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-500">Voice ID</label>
-                    <input
-                      type="text"
-                      value={voice.voice_id ?? ''}
-                      placeholder="ElevenLabs voice ID"
+                    <FieldLabel text="Voice" tip={TIPS.voice.voice_id} />
+                    <select
+                      value={VOICE_PRESETS.find((v) => v.id === (voice.voice_id ?? ''))?.id ?? 'custom'}
                       disabled={savingTab === 'voice'}
-                      onChange={(e) => setFormValue('voice', { ...voice, voice_id: e.target.value })}
+                      onChange={(e) =>
+                        setValueFor('voice', {
+                          ...voice,
+                          voice_id: e.target.value === 'custom' ? '' : e.target.value,
+                        })
+                      }
                       className={inputClass}
-                    />
+                    >
+                      {VOICE_PRESETS.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                        </option>
+                      ))}
+                      <option value="custom">Custom voice ID…</option>
+                    </select>
+                    {voice.voice_id && !VOICE_PRESETS.some((v) => v.id === voice.voice_id) && (
+                      <input
+                        type="text"
+                        value={voice.voice_id}
+                        placeholder="Paste an ElevenLabs voice ID"
+                        disabled={savingTab === 'voice'}
+                        onChange={(e) => setValueFor('voice', { ...voice, voice_id: e.target.value })}
+                        className={inputClass}
+                      />
+                    )}
+                    {!voice.voice_id && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Empty = falls back to the ELEVENLABS_VOICE_ID env var or the built-in demo voice.
+                      </p>
+                    )}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-500">Language</label>
+                    <FieldLabel text="Language" tip={TIPS.voice.language} />
                     <select
                       value={voice.language ?? 'en'}
                       disabled={savingTab === 'voice'}
-                      onChange={(e) => setFormValue('voice', { ...voice, language: e.target.value })}
+                      onChange={(e) => setValueFor('voice', { ...voice, language: e.target.value })}
                       className={inputClass}
                     >
                       <option value="en">English (en)</option>
@@ -471,11 +744,11 @@ export default function AdminSettings() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-500">STT provider</label>
+                    <FieldLabel text="STT provider" tip={TIPS.voice.stt_provider} />
                     <select
                       value={voice.stt_provider ?? 'browser_first'}
                       disabled={savingTab === 'voice'}
-                      onChange={(e) => setFormValue('voice', { ...voice, stt_provider: e.target.value })}
+                      onChange={(e) => setValueFor('voice', { ...voice, stt_provider: e.target.value })}
                       className={inputClass}
                     >
                       <option value="browser_first">browser_first (free Web Speech API)</option>
@@ -484,21 +757,24 @@ export default function AdminSettings() {
                   </div>
                   <Slider
                     label="Stability"
+                    tip={TIPS.voice.stability}
                     value={voice.stability ?? 0.5}
                     disabled={savingTab === 'voice'}
-                    onChange={(v) => setFormValue('voice', { ...voice, stability: v })}
+                    onChange={(v) => setValueFor('voice', { ...voice, stability: v })}
                   />
                   <Slider
                     label="Similarity boost"
+                    tip={TIPS.voice.similarity_boost}
                     value={voice.similarity_boost ?? 0.75}
                     disabled={savingTab === 'voice'}
-                    onChange={(v) => setFormValue('voice', { ...voice, similarity_boost: v })}
+                    onChange={(v) => setValueFor('voice', { ...voice, similarity_boost: v })}
                   />
                   <Slider
                     label="Style"
+                    tip={TIPS.voice.style}
                     value={voice.style ?? 0}
                     disabled={savingTab === 'voice'}
-                    onChange={(v) => setFormValue('voice', { ...voice, style: v })}
+                    onChange={(v) => setValueFor('voice', { ...voice, style: v })}
                   />
                 </div>
               )}
@@ -508,21 +784,39 @@ export default function AdminSettings() {
               <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tabErrors[activeTab]}</p>
             )}
 
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-6 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => handleSave(activeTab)}
                 disabled={savingTab === activeTab}
                 className="rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-50"
               >
-                {savingTab === activeTab ? 'Saving…' : `Save ${activeTab} settings`}
+                {savingTab === activeTab
+                  ? 'Saving…'
+                  : course && PER_COURSE_GROUPS.includes(activeTab)
+                    ? `Save ${activeTab} for this course`
+                    : `Save ${activeTab} settings`}
               </button>
+              {courseApplies && groupHasOverrides(activeTab) && (
+                <button
+                  type="button"
+                  onClick={() => handleResetCourseGroup(activeTab)}
+                  disabled={savingTab === activeTab}
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                >
+                  Reset to global
+                </button>
+              )}
               {savedTab === activeTab && (
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                   Saved ✓
                 </span>
               )}
-              <span className="text-xs text-slate-400">Only changed keys are sent and merged on the server.</span>
+              <span className="text-xs text-slate-400">
+                {course && PER_COURSE_GROUPS.includes(activeTab)
+                  ? 'Only fields you change from the global value are stored as this course’s overrides.'
+                  : 'Only changed keys are sent and merged on the server.'}
+              </span>
             </div>
           </>
         )}

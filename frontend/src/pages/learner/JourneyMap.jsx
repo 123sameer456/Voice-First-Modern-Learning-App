@@ -113,8 +113,18 @@ export default function JourneyMap() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <header>
-        <h1 className="text-2xl font-bold text-slate-800">{journey.title}</h1>
-        <p className="mt-1 text-sm text-slate-500">{journey.description}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">{journey.title}</h1>
+            <p className="mt-1 text-sm text-slate-500">{journey.description}</p>
+          </div>
+          <Link
+            to={`/app/journeys/${journey.id}/learn`}
+            className="shrink-0 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-card transition hover:bg-sky-700"
+          >
+            📖 Start learning
+          </Link>
+        </div>
         {journey.objectives?.length > 0 && (
           <ul className="mt-3 flex flex-wrap gap-2">
             {journey.objectives.map((o) => (
@@ -128,6 +138,45 @@ export default function JourneyMap() {
           </ul>
         )}
       </header>
+
+      {/* Overview: what you'll learn (concepts) + glossary */}
+      {(concepts.length > 0 || journey.glossary?.length > 0) && (
+        <section className="grid gap-4 sm:grid-cols-2">
+          {concepts.length > 0 && (
+            <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-sky-100">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+                What you'll learn
+              </h2>
+              <ol className="mt-3 space-y-2">
+                {concepts.map((c, i) => (
+                  <li key={c.id} className="flex gap-2 text-sm text-slate-600">
+                    <span className="font-semibold text-sky-700">{i + 1}.</span>
+                    <span>
+                      <span className="font-medium text-slate-700">{c.title}</span>
+                      {c.description ? ` — ${c.description}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {journey.glossary?.length > 0 && (
+            <details className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-sky-100">
+              <summary className="cursor-pointer select-none text-sm font-bold uppercase tracking-wide text-slate-500">
+                Glossary ({journey.glossary.length})
+              </summary>
+              <dl className="mt-3 space-y-2">
+                {journey.glossary.map((g, i) => (
+                  <div key={i}>
+                    <dt className="text-sm font-semibold text-sky-700">{g.term}</dt>
+                    <dd className="text-sm text-slate-600">{g.definition}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
+        </section>
+      )}
 
       {groups.map((group) => (
         <section key={group.id}>

@@ -356,6 +356,9 @@ export default function AdminContentStudio() {
   const [generatingIds, setGeneratingIds] = useState(() => new Set())
   const [busyJourney, setBusyJourney] = useState(false)
   const [reviewSource, setReviewSource] = useState(null)
+  // Per-source AI generation options: how many activities of each type.
+  const [genMixes, setGenMixes] = useState({})
+  const [showMixes, setShowMixes] = useState({})
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -426,9 +429,14 @@ export default function AdminContentStudio() {
 
   const handleGenerate = async (source) => {
     setCreateError('')
+    const mix = genMixes[source.id]
+    if (mix && Object.values(mix).reduce((a, b) => a + Number(b || 0), 0) < 4) {
+      setCreateError('The activity mix must total at least 4 activities.')
+      return
+    }
     setGeneratingIds((prev) => new Set(prev).add(source.id))
     try {
-      const detail = await generateJourney(source.id)
+      const detail = await generateJourney(source.id, mix ? { activity_mix: mix } : undefined)
       await loadData()
       setReviewSource(source)
       return detail
@@ -600,6 +608,10 @@ export default function AdminContentStudio() {
             {sources.map((source) => {
               const generating = generatingIds.has(source.id)
               const isReviewed = reviewSource?.id === source.id
+              const mix = genMixes[source.id] || { scenario: 2, puzzle: 2, simulation: 1, mission: 1 }
+              const mixTotal = Object.values(mix).reduce((a, b) => a + Number(b || 0), 0)
+              const mixShown = Boolean(showMixes[source.id])
+              const mixInvalid = mixTotal < 4 || mixTotal > 12
               return (
                 <div
                   key={source.id}
@@ -623,8 +635,16 @@ export default function AdminContentStudio() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
+                        onClick={() => setShowMixes((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
+                        className="rounded-xl border border-sky-200 px-3 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-50"
+                        title="Choose how many activities of each type the AI should generate"
+                      >
+                        ⚙ Mix ({mixTotal})
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleGenerate(source)}
-                        disabled={generating}
+                        disabled={generating || mixInvalid}
                         className="flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:opacity-60"
                       >
                         {generating && (
@@ -648,6 +668,45 @@ export default function AdminContentStudio() {
                       </button>
                     </div>
                   </div>
+
+                  {mixShown && (
+                    <div className="mt-2 rounded-xl bg-sky-50/70 p-3">
+                      <p className="text-xs font-medium text-slate-500">
+                        Generation mix — decide how many activities of each type the AI builds (total {mixTotal})
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {['scenario', 'puzzle', 'simulation', 'mission'].map((type) => (
+                          <label key={type} className="block">
+                            <span className="text-xs capitalize text-slate-500">{type}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="6"
+                              value={mix[type]}
+                              onChange={(e) =>
+                                setGenMixes((prev) => ({
+                                  ...prev,
+                                  [source.id]: {
+                                    ...mix,
+                                    [type]: Math.max(0, Math.min(6, Number(e.target.value) || 0)),
+                                  },
+                                }))
+                              }
+                              className="mt-1 w-full rounded-xl border border-sky-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      {mixTotal < 4 && (
+                        <p className="mt-1 text-xs text-red-500">Total must be at least 4 activities.</p>
+                      )}
+                      {mixTotal > 12 && (
+                        <p className="mt-1 text-xs text-red-500">
+                          Total must be at most 12 activities — lower some type counts.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {isReviewed && (
                     <div className="mt-1 space-y-2">

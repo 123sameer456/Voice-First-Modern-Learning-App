@@ -150,6 +150,19 @@ class AdminPasswordReset(BaseModel):
     new_password: str = Field(min_length=8, max_length=72)
 
 
+class ActivityMixRequest(BaseModel):
+    """Admin-configured activity mix for AI journey generation."""
+
+    scenario: int = Field(default=2, ge=0, le=6)
+    puzzle: int = Field(default=2, ge=0, le=6)
+    simulation: int = Field(default=1, ge=0, le=6)
+    mission: int = Field(default=1, ge=0, le=6)
+
+
+class GenerationConfigRequest(BaseModel):
+    activity_mix: ActivityMixRequest = Field(default_factory=ActivityMixRequest)
+
+
 class SettingOut(BaseModel):
     key: str
     value: dict
@@ -160,6 +173,21 @@ class SettingUpdate(BaseModel):
     value: dict
 
 
+class DayCountOut(BaseModel):
+    date: str  # YYYY-MM-DD
+    count: int
+
+
+class JourneyKpiOut(BaseModel):
+    journey_id: int
+    title: str
+    status: str
+    activity_count: int
+    needs_review_count: int
+    learners: int
+    avg_mastery: float  # 0 when no graded data yet
+
+
 class StatsOut(BaseModel):
     users_total: int
     learners_total: int
@@ -167,6 +195,11 @@ class StatsOut(BaseModel):
     journeys_draft: int
     interactions_total: int
     avg_mastery: float
+    pass_rate: float = 0.0  # % of graded attempts that passed
+    active_learners_7d: int = 0
+    streak_learners: int = 0
+    interactions_daily: list[DayCountOut] = []  # last 14 days
+    journey_kpis: list[JourneyKpiOut] = []
 
 
 # --- Phase 3: adaptive engine / gamification ---
@@ -196,6 +229,75 @@ class BadgeOut(BaseModel):
     name: str
     icon: str
     description: str
+
+
+# --- Study mode: learn from source material, then voice Q&A tutoring ---
+
+class SourceSectionOut(BaseModel):
+    """One AI-cleaned section of the study material."""
+
+    heading: str = ""
+    paragraphs: list[str] = []
+
+
+class JourneySourceOut(BaseModel):
+    """The actual learning material behind a published journey.
+
+    `sections` carries the AI-cleaned structure (junk removed, proper headings
+    and paragraphs). Empty when AI cleanup is unavailable — clients then fall
+    back to rendering `text` (the raw extracted text).
+    """
+
+    id: int
+    type: str
+    title: str
+    text: str
+    sections: list[SourceSectionOut] = []
+
+
+class StudyQuestionsRequest(BaseModel):
+    count: int = Field(default=5, ge=1, le=5)
+    language: str = Field(default="en", pattern="^(en|ur)$")
+    # Questions already asked (recent sessions) so the AI avoids repeats.
+    avoid: list[str] = Field(default_factory=list, max_length=50)
+
+
+class StudyQuestionOut(BaseModel):
+    index: int
+    question: str
+
+
+class StudyQuestionsResponse(BaseModel):
+    questions: list[StudyQuestionOut]
+
+
+class StudyEvaluateRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(min_length=1, max_length=4000)
+    language: str = Field(default="en", pattern="^(en|ur)$")
+
+
+class StudyEvaluateResponse(BaseModel):
+    correct: bool
+    feedback: str
+
+
+class StudyChatTurn(BaseModel):
+    """One turn of the two-way voice tutoring conversation."""
+
+    role: str = Field(pattern="^(user|tutor)$")
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class StudyChatRequest(BaseModel):
+    """Stateless chat: the client sends the recent conversation each turn."""
+
+    messages: list[StudyChatTurn] = Field(default_factory=list, max_length=20)
+    language: str = Field(default="en", pattern="^(en|ur)$")
+
+
+class StudyChatResponse(BaseModel):
+    reply: str
 
 
 class MasteryOut(BaseModel):

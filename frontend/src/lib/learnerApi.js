@@ -22,6 +22,22 @@ export const getNudges = () => api('/learner/nudges')
 export const markNudgeRead = (nudgeId) =>
   api(`/learner/nudges/${nudgeId}/read`, { method: 'POST' })
 
+// --- Study mode (learn from the source material, then voice Q&A) ---
+export const getJourneySource = (id) => api(`/learner/journeys/${id}/source`)
+
+// body: { count (1-5, default 5), language 'en'|'ur', avoid: [previously asked questions] }
+export const getStudyQuestions = (journeyId, body) =>
+  api(`/learner/journeys/${journeyId}/study/questions`, { method: 'POST', body })
+
+// body: { question, answer (transcript), language 'en'|'ur' } -> { correct, feedback }
+export const evaluateStudyAnswer = (journeyId, body) =>
+  api(`/learner/journeys/${journeyId}/study/evaluate`, { method: 'POST', body })
+
+// Two-way voice tutoring conversation (stateless — client sends recent history).
+// body: { messages: [{role: 'user'|'tutor', text}], language 'en'|'ur' } -> { reply }
+export const studyChat = (journeyId, body) =>
+  api(`/learner/journeys/${journeyId}/study/chat`, { method: 'POST', body })
+
 // --- Voice (server proxies ElevenLabs; browser STT stays client-side) ---
 // GET /voice/config -> { enabled, stt_provider, language }
 export const getVoiceConfig = () => api('/voice/config')

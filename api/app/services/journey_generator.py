@@ -1,8 +1,10 @@
+import json
 import re
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models import Activity, Concept, ContentSource, Journey, Setting, utcnow
 from app.services import gemini
 from app.services.ingestion import _normalize
@@ -77,12 +79,18 @@ Concepts:
 {concepts_block}
 
 Rules:
-- Create 6-10 activities. Each has: concept_index (0-based), type (lowercase, one of
-  scenario|puzzle|simulation|mission), difficulty (1-5, within {difficulty_min}-
-  {difficulty_max}), source_refs (up to 5 SHORT verbatim quotes from the source that
-  justify the activity), confidence (0-1 that it is well-grounded), and a payload with
-  exactly two keys: "data" (learner-visible) and "answer" (grading key).
-- MANDATORY mix: include at least 2 scenario, 2 puzzle, 1 simulation and 1 mission.
+- Create exactly {total_activities} activities. Each has: concept_index (0-based),
+  type (lowercase, one of scenario|puzzle|simulation|mission), difficulty (1-5,
+  within {difficulty_min}-{difficulty_max}), source_refs (up to 5 SHORT verbatim
+  quotes from the source that justify the activity), confidence (0-1 that it is
+  well-grounded), and a payload with exactly two keys: "data" (learner-visible)
+  and "answer" (grading key).
+- "answer" is REQUIRED on every activity: always a JSON object following the shapes
+  below. Never omit it, never return a string, number or null.
+- Copy source_refs VERBATIM from the source material (exact characters, exact words
+  in the same order). Never paraphrase, merge sentences from different places, or
+  invent quotes. If no verbatim quote justifies the activity, use an empty list.
+- EXACT activity mix: {mix_instruction}. Never exceed, skip or substitute any type count.
 - {language_instruction}
 
 Payload shapes per type — follow EXACTLY:
@@ -105,13 +113,66 @@ MISSION (apply knowledge to a real task, self-reported completion):
 
 All option ids must be lowercase letters ("a", "b", ...). Item ids are "i1", "i2", ..."""
 
+REPAIR_PROMPT = """You are fixing AI-generated learning activities that a validator flagged.
+
+SOURCE MATERIAL (the only allowed content source):
+\"\"\"
+{context}
+\"\"\"
+
+Flagged activities (JSON array; each entry has its original index, the issues found,
+and the activity to fix):
+{broken_json}
+
+Fix every listed issue for each activity:
+- "payload missing 'answer' key": add an "answer" OBJECT matching the shape for that
+  activity type (scenario -> {{"correct_option_id": "...", "rationale": "..."}},
+  puzzle -> {{"solutions": {{...}}}}, simulation -> {{"correct_option_ids": [...]}},
+  mission -> {{"min_tasks": 2}}). The answer must be consistent with the activity's
+  "data" and answerable from the source material.
+- "source_ref not found in source text": replace each bad quote with a SHORT quote
+  copied VERBATIM from the source material (exact characters, ignoring line breaks).
+  Never paraphrase. Use an empty list if no verbatim quote justifies the activity.
+- Keep everything else in each activity exactly as provided.
+
+Return JSON: {{"activities": [{{"index": <original index>, "activity": <fixed activity>}}]}}"""
+
 
 def _clamp_difficulty(value: int, lo: int, hi: int) -> int:
     return max(1, min(5, int(value)))
 
 
+def _canonical(text: str) -> str:
+    """Canonical form for verbatim-quote checks.
+
+    Unifies formatting-only variations (curly quotes, ellipsis character,
+    backticks, non-breaking spaces, dashes) so genuine quotes are not flagged
+    over punctuation, while any change of wording still fails the match.
+    """
+    replacements = {
+        "`": "",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2026": "...",
+        "\u00a0": " ",
+        "\u2013": "-",
+        "\u2014": "-",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return _normalize(text)
+
+
+def _canonical_ref(text: str) -> str:
+    """Canonical form for a quoted ref: also drop wrapping quote characters
+    (Gemini often wraps verbatim quotes in quotation marks)."""
+    return _canonical(text).strip("\"' \t")
+
+
 def _grounding_issues(
-    plan: ActivityPlan, normalized_source: str, difficulty_range: list[int]
+    plan: ActivityPlan, canonical_source: str, difficulty_range: list[int]
 ) -> tuple[list[str], str]:
     ptype = plan.type.strip().lower()
     issues: list[str] = []
@@ -127,13 +188,86 @@ def _grounding_issues(
     if not isinstance(plan.payload.get("answer"), dict):
         issues.append("payload missing 'answer' key")
     for ref in plan.source_refs:
-        if _normalize(ref) not in normalized_source:
+        if _canonical_ref(ref) not in canonical_source:
             issues.append("source_ref not found in source text")
             break
     return issues, ptype
 
 
-def generate_journey(db: Session, source: ContentSource) -> Journey:
+def _repair_plans(
+    plans: list[ActivityPlan], context: str, canonical_source: str, difficulty_range: list[int]
+) -> list[ActivityPlan]:
+    """One cheap Gemini pass to fix flagged activities before saving.
+
+    Only runs when some activities have grounding issues. Uses the lite model
+    to keep costs down; if the call or any individual fix fails, the original
+    (flagged for review) activity is kept untouched.
+    """
+    broken = []
+    for index, plan in enumerate(plans):
+        issues, _ = _grounding_issues(plan, canonical_source, difficulty_range)
+        if issues:
+            broken.append({"index": index, "issues": issues, "activity": plan.model_dump()})
+    if not broken:
+        return plans
+
+    try:
+        raw = gemini.generate_json_raw(
+            REPAIR_PROMPT.format(
+                context=context,
+                broken_json=json.dumps(broken, ensure_ascii=False, indent=2),
+            ),
+            model=settings.GEMINI_LITE_MODEL,
+            temperature=0.2,
+        )
+    except gemini.GeminiError:
+        return plans  # graceful degradation: keep flagged originals
+    items = raw.get("activities") if isinstance(raw, dict) else None
+    if not isinstance(items, list):
+        return plans
+
+    fixed = list(plans)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            index = int(item.get("index", -1))
+        except (TypeError, ValueError):
+            continue
+        candidate_data = item.get("activity") if isinstance(item.get("activity"), dict) else item
+        if not isinstance(candidate_data, dict) or not (0 <= index < len(fixed)):
+            continue
+        try:
+            candidate = ActivityPlan.model_validate(candidate_data)
+        except ValidationError:
+            continue
+        issues, _ = _grounding_issues(candidate, canonical_source, difficulty_range)
+        if not issues:  # accept only fully-repaired activities
+            fixed[index] = candidate
+    return fixed
+
+
+DEFAULT_ACTIVITY_MIX = {"scenario": 2, "puzzle": 2, "simulation": 1, "mission": 1}
+
+
+def generate_journey(
+    db: Session, source: ContentSource, activity_mix: dict | None = None
+) -> Journey:
+    """Generate a journey; `activity_mix` (type → count) lets the admin decide
+    how many activities of each type the AI must produce."""
+    mix_counts = dict(DEFAULT_ACTIVITY_MIX)
+    for key in mix_counts:
+        try:
+            mix_counts[key] = max(0, min(6, int((activity_mix or {}).get(key, mix_counts[key]))))
+        except (TypeError, ValueError):
+            pass
+    total_activities = sum(mix_counts.values())
+    if total_activities < 4:
+        raise GenerationError("Configure at least 4 activities in the generation mix.")
+    if total_activities > 12:
+        raise GenerationError("Configure at most 12 activities in the generation mix.")
+    mix_instruction = ", ".join(f"{n} {t}" for t, n in mix_counts.items() if n > 0)
+
     settings_map = {s.key: s.value for s in db.query(Setting).all()}
     content_cfg = settings_map.get("content", {})
     language = content_cfg.get("default_language", "en")
@@ -152,6 +286,7 @@ def generate_journey(db: Session, source: ContentSource) -> Journey:
     context = source.raw_text[:MAX_CONTEXT_CHARS]
     if len(context.strip()) < 50:
         raise GenerationError("Source text is too short to generate a journey.")
+    canonical_source = _canonical(source.raw_text)
 
     try:
         outline = gemini.generate_json(
@@ -176,6 +311,8 @@ def generate_journey(db: Session, source: ContentSource) -> Journey:
                 difficulty_min=difficulty_range[0] if difficulty_range else 1,
                 difficulty_max=difficulty_range[1] if len(difficulty_range) > 1 else 3,
                 language_instruction=language_instruction,
+                total_activities=total_activities,
+                mix_instruction=mix_instruction,
             ),
             temperature=0.7,
         )
@@ -190,6 +327,9 @@ def generate_journey(db: Session, source: ContentSource) -> Journey:
                 continue  # salvage the valid items, skip malformed ones
         if not activity_plans:
             raise gemini.GeminiError("No valid activities in Gemini response")
+        activity_plans = _repair_plans(
+            activity_plans, context, canonical_source, difficulty_range
+        )
         plans = ActivityPlanList(activities=activity_plans)
     except gemini.GeminiError as exc:
         source.status = "failed"
@@ -223,11 +363,10 @@ def generate_journey(db: Session, source: ContentSource) -> Journey:
         concept_rows.append(row)
     db.flush()
 
-    normalized_source = _normalize(source.raw_text)
     xp_base = int(gamification_cfg.get("xp_per_activity_base", 10))
     saved = 0
     for order, plan in enumerate(plans.activities):
-        issues, activity_type = _grounding_issues(plan, normalized_source, difficulty_range)
+        issues, activity_type = _grounding_issues(plan, canonical_source, difficulty_range)
         if activity_type not in ACTIVITY_TYPES:
             activity_type = "scenario"
         concept_id = (

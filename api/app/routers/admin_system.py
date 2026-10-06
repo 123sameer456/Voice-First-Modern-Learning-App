@@ -1,11 +1,15 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, require_admin
 from app.core.security import hash_password
 from app.models import (
+    Activity,
     AuditLog,
+    Concept,
     Interaction,
     Journey,
     LearnerProfile,
@@ -13,12 +17,15 @@ from app.models import (
     RefreshToken,
     Setting,
     User,
+    utcnow,
 )
 from app.schemas import (
     AdminPasswordReset,
     AdminUserCreate,
     AdminUserOut,
     AdminUserUpdate,
+    DayCountOut,
+    JourneyKpiOut,
     SettingOut,
     SettingUpdate,
     StatsOut,
@@ -162,12 +169,78 @@ def update_setting(
 def get_stats(
     admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ) -> StatsOut:
+    now = utcnow()
     users_total = db.query(User).count()
     learners_total = db.query(User).filter(User.role == "learner").count()
     journeys_published = db.query(Journey).filter(Journey.status == "published").count()
     journeys_draft = db.query(Journey).filter(Journey.status == "draft").count()
     interactions_total = db.query(Interaction).count()
     avg_mastery = float(db.query(func.avg(Mastery.score)).scalar() or 0.0)
+
+    # Pass rate: share of graded attempts whose signal has passed=1 (SQLite JSON).
+    passed_count = int(
+        db.query(func.count(Interaction.id))
+        .filter(text("json_extract(interactions.signals, '$.passed') = 1"))
+        .scalar()
+        or 0
+    )
+    pass_rate = round(100.0 * passed_count / interactions_total, 1) if interactions_total else 0.0
+
+    active_learners_7d = int(
+        db.query(func.count(func.distinct(Interaction.user_id)))
+        .filter(Interaction.created_at >= now - timedelta(days=7))
+        .scalar()
+        or 0
+    )
+    streak_learners = int(
+        db.query(LearnerProfile).filter(LearnerProfile.streak_count > 0).count()
+    )
+
+    # Daily interaction counts for the last 14 days (zero-filled).
+    start = now - timedelta(days=13)
+    counts = dict(
+        db.query(func.date(Interaction.created_at), func.count(Interaction.id))
+        .filter(Interaction.created_at >= start)
+        .group_by(func.date(Interaction.created_at))
+        .all()
+    )
+    interactions_daily = []
+    for offset in range(14):
+        day = (start + timedelta(days=offset)).date()
+        interactions_daily.append(DayCountOut(date=day.isoformat(), count=int(counts.get(str(day), 0))))
+
+    # Per-course KPIs (learners touched + avg mastery + review flags).
+    journey_kpis = []
+    for journey in db.query(Journey).order_by(Journey.id).all():
+        activities = journey.activities
+        learners = int(
+            db.query(func.count(func.distinct(Interaction.user_id)))
+            .join(Activity, Interaction.activity_id == Activity.id)
+            .filter(Activity.journey_id == journey.id)
+            .scalar()
+            or 0
+        )
+        avg_journey_mastery = float(
+            db.query(func.avg(Mastery.score))
+            .join(Concept, Mastery.concept_id == Concept.id)
+            .filter(Concept.journey_id == journey.id)
+            .scalar()
+            or 0.0
+        )
+        journey_kpis.append(
+            JourneyKpiOut(
+                journey_id=journey.id,
+                title=journey.title,
+                status=journey.status,
+                activity_count=len(activities),
+                needs_review_count=sum(
+                    1 for a in activities if a.payload.get("meta", {}).get("needs_review")
+                ),
+                learners=learners,
+                avg_mastery=round(avg_journey_mastery, 1),
+            )
+        )
+
     return StatsOut(
         users_total=users_total,
         learners_total=learners_total,
@@ -175,4 +248,9 @@ def get_stats(
         journeys_draft=journeys_draft,
         interactions_total=interactions_total,
         avg_mastery=round(avg_mastery, 1),
+        pass_rate=pass_rate,
+        active_learners_7d=active_learners_7d,
+        streak_learners=streak_learners,
+        interactions_daily=interactions_daily,
+        journey_kpis=journey_kpis,
     )

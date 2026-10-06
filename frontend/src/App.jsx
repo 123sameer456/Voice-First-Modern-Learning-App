@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import LearnerHome from './pages/LearnerHome'
 import LearnerLayout from './components/learner/LearnerLayout'
 import JourneyMap from './pages/learner/JourneyMap'
+import StudyMode from './pages/learner/StudyMode'
 import ActivityPlayer from './pages/learner/ActivityPlayer'
 import Profile from './pages/learner/Profile'
 import Nudges from './pages/learner/Nudges'
@@ -43,6 +44,7 @@ export default function App() {
           >
             <Route index element={<LearnerHome />} />
             <Route path="journeys/:id" element={<JourneyMap />} />
+            <Route path="journeys/:id/learn" element={<StudyMode />} />
             <Route path="activities/:activityId" element={<ActivityPlayer />} />
             <Route path="profile" element={<Profile />} />
             <Route path="nudges" element={<Nudges />} />

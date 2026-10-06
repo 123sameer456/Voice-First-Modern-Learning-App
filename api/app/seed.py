@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -15,8 +15,10 @@ from app.models import (
     ContentSource,
     Journey,
     LearnerProfile,
+    Nudge,
     Setting,
     User,
+    utcnow,
 )
 
 SEED_DATA_DIR = Path(__file__).resolve().parent / "seed_data" / "journeys"
@@ -188,6 +190,58 @@ def _load_journey_fixtures(db: Session) -> None:
             )
 
 
+DEMO_NUDGES = [
+    {
+        "type": "streak",
+        "message": "🔥 3-day streak! Complete one activity today to keep it alive.",
+        "status": "sent",
+        "days_ago": 0,
+    },
+    {
+        "type": "reinforcement",
+        "message": "🔁 Time to refresh what you learned — your mastery fades without practice.",
+        "status": "sent",
+        "days_ago": 1,
+    },
+    {
+        "type": "reminder",
+        "message": "⏰ Your learning journey is waiting — pick up where you left off.",
+        "status": "sent",
+        "days_ago": 2,
+    },
+    {
+        "type": "achievement",
+        "message": "🏅 Badge unlocked: First Steps — you completed your first activity!",
+        "status": "read",
+        "days_ago": 4,
+    },
+]
+
+
+def _seed_demo_nudges(db: Session) -> None:
+    """Give the demo learner a populated Nudges inbox (only when empty)."""
+    learner = db.query(User).filter_by(email=settings.DEMO_LEARNER_EMAIL.lower()).first()
+    if not learner or db.query(Nudge).filter(Nudge.user_id == learner.id).first():
+        return
+    now = utcnow()
+    journey = db.query(Journey).order_by(Journey.id).first()
+    for item in DEMO_NUDGES:
+        message = item["message"]
+        if item["type"] == "reminder" and journey:
+            message = f"⏰ '{journey.title}' is waiting — pick up where you left off."
+        when = now - timedelta(days=item["days_ago"])
+        db.add(
+            Nudge(
+                user_id=learner.id,
+                type=item["type"],
+                message=message,
+                scheduled_at=when,
+                sent_at=when,
+                status=item["status"],
+            )
+        )
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
@@ -212,6 +266,7 @@ def init_db() -> None:
         _ensure_user(db, settings.DEMO_LEARNER_EMAIL, settings.DEMO_LEARNER_PASSWORD, role="learner")
 
         _load_journey_fixtures(db)
+        _seed_demo_nudges(db)
 
         db.commit()
     finally:

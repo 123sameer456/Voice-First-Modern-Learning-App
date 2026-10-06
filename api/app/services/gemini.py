@@ -17,6 +17,29 @@ def _client() -> genai.Client:
     return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
+def _generate(client: genai.Client, model: str, prompt: str, config):
+    """Call generate_content, retrying once without the thinking config.
+
+    The 3.x / lite model family rejects `thinking_budget=0` with a 400
+    INVALID_ARGUMENT (thinking cannot be disabled there), while 2.5 models
+    accept it for cost control. A single retry keeps both families working.
+    """
+    try:
+        return client.models.generate_content(model=model, contents=prompt, config=config)
+    except Exception as exc:
+        retry_config = None
+        if config is not None and getattr(config, "thinking_config", None) is not None:
+            if "invalid argument" in str(exc).lower():
+                retry_config = genai_types.GenerateContentConfig(
+                    response_mime_type=config.response_mime_type,
+                    response_schema=config.response_schema,
+                    temperature=config.temperature,
+                )
+        if retry_config is None:
+            raise
+        return client.models.generate_content(model=model, contents=prompt, config=retry_config)
+
+
 def generate_json(
     model_cls: type[BaseModel],
     prompt: str,
@@ -26,15 +49,17 @@ def generate_json(
 ) -> BaseModel:
     """Generate a structured JSON response validated against `model_cls`.
 
-    Cost controls: thinking is disabled (thinking_budget=0) and the default
-    model is gemini-2.5-flash (cheap tier). Both are configurable.
+    Cost controls: thinking is disabled where the model supports it
+    (thinking_budget=0) and the default models are cheap tiers. Configurable
+    via GEMINI_MODEL / GEMINI_LITE_MODEL env vars.
     """
     client = _client()
     try:
-        response = client.models.generate_content(
-            model=model or settings.GEMINI_MODEL,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
+        response = _generate(
+            client,
+            model or settings.GEMINI_MODEL,
+            prompt,
+            genai_types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=model_cls,
                 temperature=temperature,
@@ -66,10 +91,11 @@ def generate_json_raw(
     """
     client = _client()
     try:
-        response = client.models.generate_content(
-            model=model or settings.GEMINI_MODEL,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
+        response = _generate(
+            client,
+            model or settings.GEMINI_MODEL,
+            prompt,
+            genai_types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=temperature,
                 thinking_config=genai_types.ThinkingConfig(thinking_budget=0),

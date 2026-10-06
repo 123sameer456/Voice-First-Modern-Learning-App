@@ -18,10 +18,13 @@ from app.schemas import (
     ActivityAdminOut,
     ConceptOut,
     ContentSourceOut,
+    GenerationConfigRequest,
     JourneyDetailOut,
     JourneySummaryOut,
+    SettingUpdate,
 )
 from app.services import journey_generator
+from app.services.settings_store import PER_COURSE_GROUPS, SETTINGS_GROUPS, journey_overrides
 from app.services.ingestion import (
     IngestionError,
     extract_text_from_upload,
@@ -173,14 +176,26 @@ def list_content(
 @router.post("/content/{source_id}/generate", response_model=JourneyDetailOut)
 def generate_journey_for_source(
     source_id: int,
+    config: GenerationConfigRequest | None = None,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> JourneyDetailOut:
     source = db.get(ContentSource, source_id)
     if not source:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Content source not found")
+    if config:
+        total = sum(config.activity_mix.model_dump().values())
+        if total < 4 or total > 12:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "The generation mix must total between 4 and 12 activities.",
+            )
     try:
-        journey = journey_generator.generate_journey(db, source)
+        journey = journey_generator.generate_journey(
+            db,
+            source,
+            activity_mix=config.activity_mix.model_dump() if config else None,
+        )
     except journey_generator.GenerationError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
     db.add(
@@ -212,6 +227,61 @@ def get_journey(
     if not journey:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Journey not found")
     return _journey_detail(journey)
+
+
+@router.get("/journeys/{journey_id}/settings")
+def get_journey_settings(
+    journey_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Per-course settings overrides (empty groups use the global value)."""
+    journey = db.get(Journey, journey_id)
+    if not journey:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Journey not found")
+    return {"overrides": journey_overrides(journey), "per_course_groups": list(PER_COURSE_GROUPS)}
+
+
+@router.put("/journeys/{journey_id}/settings/{group}")
+def set_journey_settings(
+    journey_id: int,
+    group: str,
+    body: SettingUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Save per-course overrides for one settings group.
+
+    An empty value object resets the group to the global settings. Only the
+    gamification and adaptive groups are consumed per-course at runtime.
+    """
+    journey = db.get(Journey, journey_id)
+    if not journey:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Journey not found")
+    if group not in SETTINGS_GROUPS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown settings group '{group}'")
+    if group not in PER_COURSE_GROUPS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Group '{group}' is global-only in this version",
+        )
+    if not isinstance(body.value, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "value must be an object")
+
+    snapshot = dict(journey.config_snapshot or {})
+    overrides = dict(snapshot.get("settings_overrides") or {})
+    overrides[group] = body.value  # {} resets the group to global
+    snapshot["settings_overrides"] = overrides
+    journey.config_snapshot = snapshot
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="journey_settings_updated",
+            detail={"journey_id": journey.id, "group": group, "keys": sorted(body.value.keys())},
+        )
+    )
+    db.commit()
+    return {"overrides": overrides}
 
 
 @router.post("/journeys/{journey_id}/publish", response_model=JourneySummaryOut)

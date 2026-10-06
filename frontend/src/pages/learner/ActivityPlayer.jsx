@@ -7,6 +7,7 @@ import {
   submitActivity,
 } from '../../lib/learnerApi'
 import { useAuth } from '../../context/AuthContext'
+import InfoTip from '../../components/InfoTip'
 import VoiceOverlay from '../../components/learner/VoiceOverlay'
 import { matchSpokenChoice, speechLocale, useSpeechRecognition, useTts } from '../../components/learner/speech'
 import { saveLocalCompleted } from './JourneyMap'
@@ -790,7 +791,10 @@ export default function ActivityPlayer() {
       <div className="rounded-3xl bg-white p-6 shadow-card ring-1 ring-sky-100">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-slate-600">How confident do you feel?</p>
+            <p className="flex items-center text-sm font-medium text-slate-600">
+              How confident do you feel?
+              <InfoTip tip="Rate yourself 1–5 stars — how sure you are BEFORE seeing the result. Example: 5 stars = “I’d bet money I got this right”. Your honesty trains the adaptive engine: low confidence + correct answer boosts mastery less, but wrong + low confidence gets you gentler review questions." />
+            </p>
             <div className="mt-1">
               <Stars value={confidence} onChange={setConfidence} />
             </div>
@@ -799,6 +803,7 @@ export default function ActivityPlayer() {
             <button
               onClick={revealHint}
               disabled={hints.length >= 3}
+              title="Hints are gentle nudges toward the answer — no spoilers. Each hint costs XP and slightly slows mastery growth."
               className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-40"
             >
               💡 Hint ({hints.length}/3)

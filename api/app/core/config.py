@@ -58,10 +58,10 @@ class Settings(BaseSettings):
     FRONTEND_ORIGIN: str = "http://localhost:5173"
     MAX_UPLOAD_SIZE_MB: int = 10
 
-    # AI providers (cost-optimized defaults)
+    # AI providers (cost-optimized defaults; override in .env / Vercel env)
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
-    GEMINI_LITE_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_LITE_MODEL: str = "gemini-3.5-flash-lite"
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_VOICE_ID: str = ""
 

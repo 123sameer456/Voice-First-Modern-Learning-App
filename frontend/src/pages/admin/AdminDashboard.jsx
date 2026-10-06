@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import InfoTip from '../../components/InfoTip'
 import { getStats, listJourneys } from '../../lib/adminApi'
 
 function formatDate(value) {
@@ -10,10 +11,13 @@ function formatDate(value) {
   }
 }
 
-function StatCard({ label, value, hint }) {
+function StatCard({ label, value, hint, tip }) {
   return (
     <div className="rounded-2xl bg-white p-5 shadow-card ring-1 ring-sky-100">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="flex items-center text-xs font-medium uppercase tracking-wide text-slate-400">
+        {label}
+        <InfoTip tip={tip} />
+      </p>
       <p className="mt-2 text-3xl font-bold text-sky-700">{value}</p>
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
     </div>
@@ -40,6 +44,74 @@ function JourneyBarChart({ journeys }) {
         </div>
       ))}
       {shown.length === 0 && <p className="text-sm text-slate-400">No journeys yet.</p>}
+    </div>
+  )
+}
+
+/** Vertical bars: interactions per day, last 14 days (zero-filled). */
+function DailyActivityChart({ daily }) {
+  const max = Math.max(1, ...daily.map((d) => d.count))
+  return (
+    <div>
+      <div className="flex h-36 items-end gap-1.5">
+        {daily.map((d) => (
+          <div key={d.date} className="group relative flex h-full flex-1 flex-col justify-end">
+            <span className="pointer-events-none absolute -top-5 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-0.5 text-[10px] text-white group-hover:block">
+              {d.date.slice(5)} · {d.count}
+            </span>
+            <div
+              className={`w-full rounded-t-md transition-all ${
+                d.count > 0 ? 'bg-gradient-to-t from-sky-600 to-sky-400' : 'bg-sky-100'
+              }`}
+              style={{ height: `${Math.max(4, Math.round((d.count / max) * 100))}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
+        <span>{daily[0]?.date.slice(5) ?? ''}</span>
+        <span>{daily[Math.floor(daily.length / 2)]?.date.slice(5) ?? ''}</span>
+        <span>today</span>
+      </div>
+    </div>
+  )
+}
+
+/** Horizontal bars: average mastery % per course (with learner counts). */
+function MasteryByCourseChart({ kpis }) {
+  const shown = kpis.filter((k) => k.activity_count > 0 || k.learners > 0).slice(0, 8)
+  return (
+    <div className="space-y-3">
+      {shown.map((k) => (
+        <div key={k.journey_id}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="truncate pr-2 font-medium text-slate-600">
+              {k.title}
+              {k.status === 'draft' && <span className="ml-1 text-slate-400">(draft)</span>}
+            </span>
+            <span className="shrink-0 text-slate-400">
+              {k.avg_mastery ? `${Math.round(k.avg_mastery)}%` : '—'} · {k.learners} learner{k.learners === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="mt-1 h-3 w-full overflow-hidden rounded-full bg-sky-50 ring-1 ring-sky-100">
+            <div
+              className={`h-full rounded-full transition-all ${
+                k.avg_mastery >= 70
+                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                  : k.avg_mastery > 0
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                    : 'bg-sky-100'
+              }`}
+              style={{ width: `${Math.round(k.avg_mastery)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+      {shown.length === 0 && (
+        <p className="text-sm text-slate-400">
+          No graded attempts yet — mastery appears once learners complete activities.
+        </p>
+      )}
     </div>
   )
 }
@@ -113,6 +185,9 @@ export default function AdminDashboard() {
       ? `${Math.round(stats.avg_mastery)}%`
       : '—'
     : '—'
+  const passRateDisplay = stats?.pass_rate > 0 ? `${stats.pass_rate}%` : '—'
+  const daily = stats?.interactions_daily || []
+  const kpis = stats?.journey_kpis || []
 
   return (
     <div>
@@ -121,21 +196,63 @@ export default function AdminDashboard() {
 
       {error && <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 xl:grid-cols-5">
-        <StatCard label="Users" value={loading ? '—' : stats?.users_total ?? '—'} hint="All accounts" />
-        <StatCard label="Learners" value={loading ? '—' : stats?.learners_total ?? '—'} hint="Role = learner" />
+      <div className="mt-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <StatCard
+          label="Users"
+          value={loading ? '—' : stats?.users_total ?? '—'}
+          hint="All accounts"
+          tip="Every account on the platform — admins plus learners. Accounts are created on the Users page; there is no open signup."
+        />
+        <StatCard
+          label="Learners"
+          value={loading ? '—' : stats?.learners_total ?? '—'}
+          hint="Role = learner"
+          tip="Accounts with the learner role. Only learners see the learning app; admins see this panel."
+        />
         <StatCard
           label="Published / draft"
           value={loading ? '—' : `${stats?.journeys_published ?? 0} / ${stats?.journeys_draft ?? 0}`}
           hint="Journeys"
+          tip="Journeys by status. Published = visible to learners in the app; draft = still being reviewed in the Content Studio."
         />
-        <StatCard label="Interactions" value={loading ? '—' : stats?.interactions_total ?? '—'} hint="Activity attempts" />
-        <StatCard label="Avg. mastery" value={loading ? '—' : avgMasteryDisplay} hint="Across graded attempts" />
+        <StatCard
+          label="Interactions"
+          value={loading ? '—' : stats?.interactions_total ?? '—'}
+          hint="Activity attempts"
+          tip="Every graded attempt at an activity. More interactions with stable mastery = a healthy learning loop."
+        />
+        <StatCard
+          label="Avg. mastery"
+          value={loading ? '—' : avgMasteryDisplay}
+          hint="Across concepts"
+          tip="Average mastery score (0–100) across all concepts learners have attempted. Mastery uses correctness, hints, confidence and time — not just pass/fail."
+        />
+        <StatCard
+          label="Pass rate"
+          value={loading ? '—' : passRateDisplay}
+          hint="Graded attempts"
+          tip="Share of all attempts that passed. A very high rate (>95%) can mean activities are too easy; a low rate suggests unclear content or broken activities."
+        />
+        <StatCard
+          label="Active (7d)"
+          value={loading ? '—' : stats?.active_learners_7d ?? '—'}
+          hint="Learners with attempts"
+          tip="Distinct learners who attempted at least one activity in the last 7 days — your current engagement pulse."
+        />
+        <StatCard
+          label="Streaks alive"
+          value={loading ? '—' : stats?.streak_learners ?? '—'}
+          hint="Learners on a streak"
+          tip="Learners whose streak counter is > 0 right now. Streaks are a key retention hook — this number should grow."
+        />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
         <div className="rounded-2xl bg-white p-6 shadow-card ring-1 ring-sky-100 lg:col-span-3">
-          <h2 className="text-base font-semibold text-slate-800">Journeys</h2>
+          <h2 className="flex items-center text-base font-semibold text-slate-800">
+            Journeys
+            <InfoTip tip="One row per generated course. “Needs review” counts AI-generated activities flagged by the validator (e.g. a fabricated source quote) — review them in the Content Studio before relying on them." />
+          </h2>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full divide-y divide-sky-100 text-sm">
               <thead>
@@ -195,7 +312,10 @@ export default function AdminDashboard() {
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-card ring-1 ring-sky-100 lg:col-span-2">
-          <h2 className="text-base font-semibold text-slate-800">Activities per journey</h2>
+          <h2 className="flex items-center text-base font-semibold text-slate-800">
+            Activities per journey
+            <InfoTip tip="Content volume per course — how much the AI generated for each. Bars are relative to the biggest journey." />
+          </h2>
           <p className="mt-1 text-xs text-slate-400">Top journeys by activity count</p>
           <div className="mt-4">
             <JourneyBarChart journeys={journeysWithActivity} />
@@ -203,8 +323,37 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <div className="mt-6 grid gap-4 lg:grid-cols-5">
+        <div className="rounded-2xl bg-white p-6 shadow-card ring-1 ring-sky-100 lg:col-span-2">
+          <h2 className="flex items-center text-base font-semibold text-slate-800">
+            Daily activity
+            <InfoTip tip="Graded attempts per day over the last 14 days. Flat stretches signal disengagement — time for a nudge or new content." />
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">Graded attempts per day (last 14 days)</p>
+          <div className="mt-4">
+            <DailyActivityChart daily={daily} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-white p-6 shadow-card ring-1 ring-sky-100 lg:col-span-3">
+          <h2 className="flex items-center text-base font-semibold text-slate-800">
+            Mastery by course
+            <InfoTip tip="Average mastery % per course (green ≥ pass threshold, amber below) with the number of learners who have attempted it. Empty means no graded attempts yet." />
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Average mastery % per course · learners attempted
+          </p>
+          <div className="mt-4">
+            <MasteryByCourseChart kpis={kpis} />
+          </div>
+        </div>
+      </div>
+
       <div className="mt-6 rounded-2xl bg-white p-6 shadow-card ring-1 ring-sky-100">
-        <h2 className="text-base font-semibold text-slate-800">How to measure effectiveness</h2>
+        <h2 className="flex items-center text-base font-semibold text-slate-800">
+          How to measure effectiveness
+          <InfoTip tip="The six demo KPIs mapped to the judging criteria. Hover each card for what it measures and why it matters." />
+        </h2>
         <p className="mt-1 text-sm text-slate-500">
           The metrics this demo tracks, and why each one matters for the judging criteria.
         </p>

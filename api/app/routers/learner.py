@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import get_current_user, get_db
 from app.models import (
     Activity,
@@ -23,6 +24,7 @@ from app.schemas import (
     ConceptOut,
     DueReinforcementOut,
     JourneyLearnerOut,
+    JourneySourceOut,
     JourneySummaryOut,
     MasteryOut,
     MasteryRowOut,
@@ -30,10 +32,19 @@ from app.schemas import (
     NudgeOut,
     ProfileStatsOut,
     ProgressOut,
+    SourceSectionOut,
+    StudyChatRequest,
+    StudyChatResponse,
+    StudyChatTurn,
+    StudyEvaluateRequest,
+    StudyEvaluateResponse,
+    StudyQuestionOut,
+    StudyQuestionsRequest,
+    StudyQuestionsResponse,
     SubmitRequest,
     SubmitResponse,
 )
-from app.services import adaptive, gamification
+from app.services import adaptive, gamification, gemini, source_cleanup
 from app.services.settings_store import get_group
 
 router = APIRouter(prefix="/learner", tags=["learner"])
@@ -190,8 +201,9 @@ def submit_activity(
     # first-attempt success (the server is the source of truth for errors).
     first_attempt_success = passed and error_count == 0 and hints_used == 0
 
-    gam_settings = get_group(db, "gamification")
-    adaptive_settings = get_group(db, "adaptive")
+    # Per-course settings: this activity's journey may override the globals.
+    gam_settings = get_group(db, "gamification", journey)
+    adaptive_settings = get_group(db, "adaptive", journey)
 
     signals = {
         "passed": passed,
@@ -615,3 +627,275 @@ def mark_nudge_read(
         scheduled_at=nudge.scheduled_at,
         status=nudge.status,
     )
+
+
+# ---------------------------------------------------------------------------
+# Study mode: learn from the actual source material, then voice Q&A tutoring
+# ---------------------------------------------------------------------------
+
+STUDY_CONTEXT_CHARS = 30_000
+
+STUDY_QUESTIONS_PROMPT = """You are a friendly tutor preparing a short spoken quiz to check how well a learner understood material they just studied.
+
+SOURCE MATERIAL (questions must be answerable from this only):
+\"\"\"
+{context}
+\"\"\"
+
+{language_instruction}
+
+Create exactly {count} distinct quiz questions:
+- Each has "question" (clear, spoken-style, one or two sentences) and "ideal_answer" (the expected answer in 1-3 sentences, used only for grading).
+- Mix difficulty: some simple recall, some understanding/apply. Cover different parts of the source.
+- Numbers, names and key facts must come from the source; never invent facts.
+{avoid_block}
+Return JSON only: {{"questions": [{{"question": "...", "ideal_answer": "..."}}]}}"""
+
+STUDY_CHAT_PROMPT = """You are a friendly voice tutor in a live two-way conversation with a learner studying the material below.
+
+MATERIAL:
+\"\"\"
+{context}
+\"\"\"
+
+{language_instruction}
+
+RECENT CONVERSATION (oldest first):
+{transcript}
+
+HOW TO REPLY:
+- Write 2-4 short spoken sentences — your reply is read aloud, so write for the ear: no markdown, no lists, no emojis, no URLs.
+- If the learner asked a question about the material: answer it clearly, using ONLY the material, in simple words a beginner understands.
+- If the learner attempted an answer or explanation: judge it fairly against the material. Correct → genuinely motivate them and add one interesting related detail. Wrong or incomplete → clearly teach the correct concept in simple words, one idea at a time, without sounding harsh.
+- If the learner goes off-topic, gently guide them back to the material.
+- If the conversation just started (nothing above), warmly greet the learner, say in one sentence what the material is about, and ask a first easy question from it.
+- Never invent facts that are not in the material.
+- End your reply with exactly ONE short question that invites the learner to continue.
+
+Return JSON only: {{"reply": "<your spoken reply>"}}"""
+
+STUDY_EVALUATE_PROMPT = """You are a friendly tutor grading a learner's spoken answer, one question at a time.
+
+SOURCE MATERIAL:
+\"\"\"
+{context}
+\"\"\"
+
+QUESTION: {question}
+LEARNER'S SPOKEN ANSWER: {answer}
+
+Decide if the answer is correct based on the source material. Be fair: accept paraphrases,
+extra detail, accent or transcription noise, and minor wording differences. Only a factual
+error or a missing core point counts as wrong.
+
+{language_instruction}
+
+Respond with JSON only:
+{{"correct": true or false, "feedback": "<ONE short sentence: if correct, briefly affirm and add one interesting detail from the source; if wrong, teach the correct point in one sentence>"}}"""
+
+
+def _study_language_instruction(language: str) -> str:
+    if language == "ur":
+        return (
+            "Write all learner-facing text in Urdu (Urdu script), keeping key technical "
+            "terms in English where natural."
+        )
+    return "Write all learner-facing text in English."
+
+
+def _published_journey_or_404(db: Session, journey_id: int) -> Journey:
+    journey = db.get(Journey, journey_id)
+    if not journey or journey.status != "published":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Journey not found")
+    return journey
+
+
+def _study_context(journey: Journey, db: Session) -> str:
+    """Study/quiz context — prefers the cached AI-cleaned text (no page
+    furniture) and falls back to the raw extraction."""
+    source = journey.content_source
+    sections = source_cleanup.cached_sections(db, source)
+    if sections:
+        text = source_cleanup.clean_plain_text(sections)
+    else:
+        text = source.raw_text if source else ""
+    text = text[:STUDY_CONTEXT_CHARS]
+    if len(text.strip()) < 50:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This journey has no study material to quiz on.",
+        )
+    return text
+
+
+@router.get("/journeys/{journey_id}/source", response_model=JourneySourceOut)
+def get_journey_source(
+    journey_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JourneySourceOut:
+    """The actual document/topic/URL content the journey was built from.
+
+    The first call runs an AI cleanup pass (removes web/document junk and
+    structures the material into headed sections) and caches it; later calls
+    serve the cache. Falls back to the raw extraction when cleanup is not
+    possible.
+    """
+    journey = _published_journey_or_404(db, journey_id)
+    source = journey.content_source
+    sections = source_cleanup.get_clean_sections(db, source)
+    if sections:
+        return JourneySourceOut(
+            id=source.id,
+            type=source.type,
+            title=source.title,
+            text=source_cleanup.clean_plain_text(sections),
+            sections=[SourceSectionOut(**s) for s in sections],
+        )
+    return JourneySourceOut(
+        id=source.id if source else 0,
+        type=source.type if source else "topic",
+        title=source.title if source else journey.title,
+        text=source.raw_text if source else "",
+    )
+
+
+@router.post(
+    "/journeys/{journey_id}/study/questions", response_model=StudyQuestionsResponse
+)
+def generate_study_questions(
+    journey_id: int,
+    body: StudyQuestionsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyQuestionsResponse:
+    """Fresh quiz questions from Gemini — never cached, new every session.
+
+    `avoid` lets the client pass questions asked in earlier sessions so the
+    model produces different ones each turn. Ideal answers stay server-side.
+    """
+    journey = _published_journey_or_404(db, journey_id)
+    context = _study_context(journey, db)
+
+    avoid_items = [a.strip()[:200] for a in body.avoid if str(a).strip()]
+    if avoid_items:
+        avoid_block = "Do NOT repeat or closely overlap these questions asked earlier:\n" + "\n".join(
+            f"- {a}" for a in avoid_items[:20]
+        )
+    else:
+        avoid_block = ""
+
+    try:
+        raw = gemini.generate_json_raw(
+            STUDY_QUESTIONS_PROMPT.format(
+                context=context,
+                count=body.count,
+                language_instruction=_study_language_instruction(body.language),
+                avoid_block=avoid_block,
+            ),
+            temperature=0.9,
+        )
+    except gemini.GeminiError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    items = raw.get("questions") if isinstance(raw, dict) else None
+    questions: list[str] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("question", "")).strip()
+        ideal = str(item.get("ideal_answer", item.get("answer", ""))).strip()
+        if text and ideal:
+            questions.append(text)
+        if len(questions) >= body.count:
+            break
+    if not questions:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "AI did not return usable questions — try again."
+        )
+    return StudyQuestionsResponse(
+        questions=[StudyQuestionOut(index=i, question=q) for i, q in enumerate(questions)]
+    )
+
+
+@router.post(
+    "/journeys/{journey_id}/study/evaluate", response_model=StudyEvaluateResponse
+)
+def evaluate_study_answer(
+    journey_id: int,
+    body: StudyEvaluateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyEvaluateResponse:
+    """Judge one spoken answer: correct/incorrect + one-sentence teaching feedback."""
+    journey = _published_journey_or_404(db, journey_id)
+    context = _study_context(journey, db)
+
+    try:
+        raw = gemini.generate_json_raw(
+            STUDY_EVALUATE_PROMPT.format(
+                context=context,
+                question=body.question[:2000],
+                answer=body.answer[:4000],
+                language_instruction=_study_language_instruction(body.language),
+            ),
+            model=settings.GEMINI_LITE_MODEL,
+            temperature=0.1,
+        )
+    except gemini.GeminiError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    data = raw if isinstance(raw, dict) else {}
+    correct = bool(data.get("correct", False))
+    feedback = str(data.get("feedback", "")).strip()[:1000]
+    if not feedback:
+        feedback = (
+            "Correct — well done!" if correct else "Not quite — revisit that part of the material."
+        )
+    return StudyEvaluateResponse(correct=correct, feedback=feedback)
+
+
+def _study_transcript(messages: list[StudyChatTurn]) -> str:
+    """Render recent turns for the tutor prompt (oldest first, capped)."""
+    lines = []
+    for turn in messages[-16:]:
+        who = "TUTOR" if turn.role == "tutor" else "LEARNER"
+        lines.append(f"{who}: {turn.text[:2000]}")
+    return "\n".join(lines) if lines else "(the conversation just started)"
+
+
+@router.post("/journeys/{journey_id}/study/chat", response_model=StudyChatResponse)
+def study_chat(
+    journey_id: int,
+    body: StudyChatRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StudyChatResponse:
+    """Two-way voice tutoring, stateless: the client sends recent history.
+
+    The tutor answers learner questions about the material, motivates them
+    when an attempt is correct, and patiently teaches the concept when it is
+    wrong — always ending with a follow-up question to keep the conversation
+    going. Replies are written for the ear (spoken aloud by TTS).
+    """
+    journey = _published_journey_or_404(db, journey_id)
+    context = _study_context(journey, db)
+
+    try:
+        raw = gemini.generate_json_raw(
+            STUDY_CHAT_PROMPT.format(
+                context=context,
+                language_instruction=_study_language_instruction(body.language),
+                transcript=_study_transcript(body.messages),
+            ),
+            temperature=0.6,
+        )
+    except gemini.GeminiError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    reply = str(raw.get("reply", "")).strip()[:2000] if isinstance(raw, dict) else ""
+    if not reply:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "AI did not return a reply — try again."
+        )
+    return StudyChatResponse(reply=reply)

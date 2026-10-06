@@ -84,6 +84,24 @@ class ContentSource(Base):
     journeys: Mapped[list["Journey"]] = relationship(back_populates="content_source")
 
 
+class SourceCleanText(Base):
+    """AI-cleaned version of a source's raw_text (cached, one row per source).
+
+    Raw extraction (web pages, PDFs, DOCX) pulls in page furniture — nav menus,
+    footers, page numbers — that reads badly and confuses TTS. Gemini rewrites
+    the raw text once into clean structured sections; the result lives here so
+    the cost is paid once per source. Created via create_all (no migration).
+    """
+
+    __tablename__ = "source_clean_texts"
+
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("content_sources.id"), primary_key=True
+    )
+    sections: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class Journey(Base):
     __tablename__ = "journeys"
 

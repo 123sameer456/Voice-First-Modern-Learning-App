@@ -46,8 +46,9 @@ export const listContent = () => api('/admin/content')
 
 export const deleteContent = (sourceId) => api(`/admin/content/${sourceId}`, { method: 'DELETE' })
 
-export const generateJourney = (sourceId) =>
-  api(`/admin/content/${sourceId}/generate`, { method: 'POST' })
+// config: optional { activity_mix: { scenario, puzzle, simulation, mission } }
+export const generateJourney = (sourceId, config) =>
+  api(`/admin/content/${sourceId}/generate`, { method: 'POST', body: config ?? undefined })
 
 // ---- Journeys ----
 
@@ -63,6 +64,13 @@ export const unpublishJourney = (journeyId) =>
 
 export const deleteJourney = (journeyId) =>
   api(`/admin/journeys/${journeyId}`, { method: 'DELETE' })
+
+// Per-course settings overrides (see Settings page course dropdown)
+export const getJourneySettings = (journeyId) =>
+  api(`/admin/journeys/${journeyId}/settings`)
+
+export const updateJourneySetting = (journeyId, group, value) =>
+  api(`/admin/journeys/${journeyId}/settings/${group}`, { method: 'PUT', body: { value } })
 
 // ---- Users ----
 
