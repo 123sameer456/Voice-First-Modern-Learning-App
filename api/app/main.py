@@ -58,4 +58,9 @@ app.include_router(voice.router, prefix="/api")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "environment": settings.ENVIRONMENT}
+    return {
+        "status": "ok",
+        "environment": settings.ENVIRONMENT,
+        # "turso" = persistent remote DB; "sqlite" = local/ephemeral file DB
+        "db": "turso" if settings.DATABASE_URL.startswith("sqlite+libsql") else "sqlite",
+    }

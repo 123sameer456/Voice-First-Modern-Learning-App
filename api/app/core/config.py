@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from pydantic import model_validator
@@ -56,14 +57,25 @@ class Settings(BaseSettings):
         # Turso persistence (prod only — local dev keeps the file DB; the
         # libsql dialect also cannot build on Windows/3.13 locally).
         if self.ENVIRONMENT == "prod" and self.TURSO_DATABASE_URL.strip():
+            token = self.TURSO_AUTH_TOKEN.strip()
             url = self.TURSO_DATABASE_URL.strip()
-            if url.startswith("libsql://"):
-                url = "sqlite+libsql://" + url[len("libsql://") :]
-            sep = "&" if "?" in url else "?"
-            # NOTE: the sqlalchemy-libsql dialect recognizes `secure` (not `ssl`) —
-            # without it the client connects over plaintext http/ws and Turso
-            # answers with a 308 redirect it cannot follow.
-            self.DATABASE_URL = f"{url}{sep}authToken={self.TURSO_AUTH_TOKEN}&secure=true"
+            # Sanity: the token must be a bare JWT. A multi-line paste or a
+            # copied comment would corrupt the URL and crash every request at
+            # import — fall back to the file DB (visible on /api/health) instead.
+            if token and not any(c.isspace() or c == "#" for c in token):
+                if url.startswith("libsql://"):
+                    url = "sqlite+libsql://" + url[len("libsql://") :]
+                sep = "&" if "?" in url else "?"
+                # NOTE: the sqlalchemy-libsql dialect recognizes `secure` (not
+                # `ssl`) — without it the client connects over plaintext http/ws
+                # and Turso answers with a 308 redirect it cannot follow.
+                self.DATABASE_URL = f"{url}{sep}authToken={token}&secure=true"
+            else:
+                print(
+                    "WARNING: TURSO_AUTH_TOKEN is missing or malformed — "
+                    "falling back to the ephemeral file DB",
+                    file=sys.stderr,
+                )
         if self.ENVIRONMENT == "prod":
             if self.JWT_SECRET == "dev-only-secret-change-me":
                 raise ValueError("JWT_SECRET must be set in production")
