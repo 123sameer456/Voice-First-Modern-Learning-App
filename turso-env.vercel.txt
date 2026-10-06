@@ -1,0 +1,7 @@
+# --- Paste these on Vercel: Project > Settings > Environment Variables (Production) ---
+# TURSO_DATABASE_URL
+libsql://learning-engine-muhammadsameerkhan531.aws-us-east-1.turso.io
+# TURSO_AUTH_TOKEN
+eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTEzMTkxMDksImlkIjoiMDFhMTEyZjAtMGMwMS03NGYzLTk1NGItNjY0ZmU5YjYwOGNmIiwia2lkIjoieWY2dG1xc2NLaDZkWG1PckV0ZUdYaU92RWVJRlByUUh1dWxtSWhrMWgxcyIsInJpZCI6Ijg5MzdkZjhjLTBmNGUtNDIyMi05YjlhLTg1ZDc0NjIxMjhmOSJ9.DTk-M5ijGjb7XizHYe0HetpySumZSWFKneN-aSIyI2wI_ZV9G6L8QAhcMQupGVvIutV2xoEm-CYCLtgEslWmDg
+# PYTHON_VERSION
+3.12

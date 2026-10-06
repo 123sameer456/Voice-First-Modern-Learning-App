@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # start; seed fixtures rebuild demo content automatically).
     DATABASE_URL: str = ""
 
+    # Turso (libSQL) persistent database. When both are set in a prod
+    # environment, DATABASE_URL is derived from these and all data persists.
+    # Accepts libsql://... or sqlite+libsql://... — the auth token is appended.
+    TURSO_DATABASE_URL: str = ""
+    TURSO_AUTH_TOKEN: str = ""
+
     # Auth / JWT
     JWT_SECRET: str = "dev-only-secret-change-me"
     JWT_ALG: str = "HS256"
@@ -47,6 +53,14 @@ class Settings(BaseSettings):
                 self.DATABASE_URL = "sqlite:////tmp/app.db"
             else:
                 self.DATABASE_URL = f"sqlite:///{(API_DIR / 'app.db').as_posix()}"
+        # Turso persistence (prod only — local dev keeps the file DB; the
+        # libsql dialect also cannot build on Windows/3.13 locally).
+        if self.ENVIRONMENT == "prod" and self.TURSO_DATABASE_URL.strip():
+            url = self.TURSO_DATABASE_URL.strip()
+            if url.startswith("libsql://"):
+                url = "sqlite+libsql://" + url[len("libsql://") :]
+            sep = "&" if "?" in url else "?"
+            self.DATABASE_URL = f"{url}{sep}authToken={self.TURSO_AUTH_TOKEN}&ssl=true"
         if self.ENVIRONMENT == "prod":
             if self.JWT_SECRET == "dev-only-secret-change-me":
                 raise ValueError("JWT_SECRET must be set in production")
