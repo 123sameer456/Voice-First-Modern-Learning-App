@@ -9,8 +9,19 @@ from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
+# Serverless platforms (Vercel) may not run FastAPI lifespan events on cold
+# start, so ensure the DB is created + seeded lazily before the first query.
+# init_db() is idempotent; the flag keeps warm requests at zero cost.
+_db_ready = False
+
 
 def get_db():
+    global _db_ready
+    if not _db_ready:
+        from app.seed import init_db
+
+        init_db()
+        _db_ready = True
     db = SessionLocal()
     try:
         yield db
