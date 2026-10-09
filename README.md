@@ -25,8 +25,8 @@ Sign in at `http://localhost:5173`:
 
 | Role | Email | Password |
 | --- | --- | --- |
-| Admin | admin@ubl-demo.com | ubl-demo-2026 |
-| Learner | learner@ubl-demo.com | learner-demo-2026 |
+| Admin | admin@demo.com | demo-2026 |
+| Learner | learner@demo.com | learner-demo-2026 |
 
 Two demo journeys (English + Urdu) are seeded automatically. Change credentials via `.env` before the first run (`INITIAL_ADMIN_*`, `DEMO_LEARNER_*`).
 

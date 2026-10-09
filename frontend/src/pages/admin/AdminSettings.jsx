@@ -73,8 +73,6 @@ const TIPS = {
       'Base XP before the difficulty multiplier. Example: base 10 → a difficulty-3 activity awards 30 XP on pass.',
     level_curve:
       'XP needed for each level-up. Example: 100 → 100 XP = level 2, 200 XP = level 3.',
-    hint_cost_xp:
-      'XP deducted every time a learner reveals a hint. Example: 2 → using 3 hints costs 6 XP in total.',
     streaks_enabled:
       'Tracks consecutive active days and shows the 🔥 streak counter. Example: a learner active Mon–Wed shows "3d".',
   },
@@ -562,15 +560,6 @@ export default function AdminSettings() {
                     disabled={savingTab === 'gamification'}
                     overridden={isOverridden('gamification', 'level_curve')}
                     onChange={(v) => setValueFor('gamification', { ...gamification, level_curve: v })}
-                  />
-                  <NumberField
-                    label="Hint cost (XP)"
-                    tip={TIPS.gamification.hint_cost_xp}
-                    value={gamification.hint_cost_xp}
-                    min="0"
-                    disabled={savingTab === 'gamification'}
-                    overridden={isOverridden('gamification', 'hint_cost_xp')}
-                    onChange={(v) => setValueFor('gamification', { ...gamification, hint_cost_xp: v })}
                   />
                   <Toggle
                     label="Streaks enabled"
